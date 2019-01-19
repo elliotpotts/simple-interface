@@ -56,43 +56,54 @@ constexpr int win_width = 480;
 constexpr int win_height = 360;
 
 namespace wl {
+    struct buffer_deleter {
+        void operator()(wl_buffer* b) const;
+    };
     class buffer {
-        wl_buffer* const hnd;
+        std::unique_ptr<wl_buffer, buffer_deleter> const hnd;
     public:
         explicit buffer(wl_buffer*);
         buffer(const buffer&) = delete;
         explicit operator wl_buffer*() const;
     };
 }
-wl::buffer::buffer(wl_buffer* buffer) : hnd{buffer} {
+void wl::buffer_deleter::operator()(wl_buffer* b) const {
+    wl_buffer_destroy(b);
+}
+wl::buffer::buffer(wl_buffer* buffer) : hnd(buffer) {
     if (!hnd) {
         throw std::runtime_error("Can't create buffer from nullptr");
     }
 }
 wl::buffer::operator wl_buffer*() const {
-    return hnd;
+    return hnd.get();
 }
 
 namespace wl {
+    struct surface_deleter {
+        void operator()(wl_surface*) const;
+    };
     class surface {
-        wl_surface* const hnd;
+        std::unique_ptr<wl_surface, surface_deleter> const hnd;
         static void dispatch_frame(void* data, wl_callback* callback, std::uint32_t callback_data);
         wl_callback* frame_callback = nullptr;
         wl_callback_listener frame_listener = { dispatch_frame };
         std::function<void(std::chrono::milliseconds)> frame_handler;
     public:
         explicit surface(wl_surface*);
-        surface(const surface&) = delete;
         explicit operator wl_surface*() const;
         void attach(buffer& buf, std::int32_t x, std::int32_t y);
         void commit();
         template<typename F>
         void onframe(F&& f) {
             frame_handler = std::forward<F>(f);
-            frame_callback = wl_surface_frame(hnd);
+            frame_callback = wl_surface_frame(hnd.get());
             wl_callback_add_listener(frame_callback, &frame_listener, this);
         }
     };
+};
+void wl::surface_deleter::operator()(wl_surface* sfc) const {
+    wl_surface_destroy(sfc);
 };
 wl::surface::surface(wl_surface* surface) : hnd(surface) {
     if (!hnd) {
@@ -104,23 +115,29 @@ void wl::surface::dispatch_frame(void* data, wl_callback* callback, std::uint32_
     surface.frame_handler(std::chrono::milliseconds{callback_data});
 }
 wl::surface::operator wl_surface*() const {
-    return hnd;
+    return hnd.get();
 }
 void wl::surface::attach(wl::buffer& buf, std::int32_t x, std::int32_t y) {
-    wl_surface_attach(hnd, static_cast<wl_buffer*>(buf), x, y);
+    wl_surface_attach(hnd.get(), static_cast<wl_buffer*>(buf), x, y);
 }
 void wl::surface::commit() {
-    wl_surface_commit(hnd);
+    wl_surface_commit(hnd.get());
 }
 
-namespace wl {    
+namespace wl {
+    struct compositor_deleter {
+        void operator()(wl_compositor*) const;
+    };
     class compositor {
-        wl_compositor* const hnd;
+        std::unique_ptr<wl_compositor, compositor_deleter> const hnd;
     public:
         explicit compositor(wl_compositor*);
-        compositor(const compositor&) = delete;
+        ~compositor() = default;
         surface make_surface();
     };
+}
+void wl::compositor_deleter::operator()(wl_compositor* comp) const {
+    wl_compositor_destroy(comp);
 }
 wl::compositor::compositor(wl_compositor* compositor) : hnd(compositor) {
     if (!hnd) {
@@ -128,12 +145,15 @@ wl::compositor::compositor(wl_compositor* compositor) : hnd(compositor) {
     }
 }
 wl::surface wl::compositor::make_surface() {
-    return wl::surface{ wl_compositor_create_surface(hnd) };
+    return wl::surface{ wl_compositor_create_surface(hnd.get()) };
 }
 
 namespace wl {
+    struct shell_surface_deleter {
+        void operator()(wl_shell_surface*) const;
+    };
     class shell_surface {
-        wl_shell_surface* const hnd;      
+        std::unique_ptr<wl_shell_surface, shell_surface_deleter> const hnd;      
         static void handle_ping(void*, wl_shell_surface*, std::uint32_t);          
         static void handle_configure(void*, wl_shell_surface*, std::uint32_t, std::int32_t, std::int32_t);
         static void handle_popup_done(void*, wl_shell_surface*);
@@ -144,15 +164,18 @@ namespace wl {
         };
     public:
         explicit shell_surface(wl_shell_surface*);
-        shell_surface(const shell_surface&) = delete;
+        ~shell_surface() = default;
         void set_toplevel();
     };
+}
+void wl::shell_surface_deleter::operator()(wl_shell_surface* sfc) const {
+    wl_shell_surface_destroy(sfc);
 }
 wl::shell_surface::shell_surface(wl_shell_surface* surface) : hnd(surface) {
     if (!hnd) {
         throw std::runtime_error("Can't create shell_surface from nullptr!\n");
     }
-    wl_shell_surface_add_listener(hnd, &listener, nullptr);
+    wl_shell_surface_add_listener(hnd.get(), &listener, nullptr);
 }
 void wl::shell_surface::handle_ping(void* data, wl_shell_surface* shell_surface, std::uint32_t serial) {
     wl_shell_surface_pong(shell_surface, serial);
@@ -163,43 +186,47 @@ void wl::shell_surface::handle_configure(void*, wl_shell_surface*, std::uint32_t
 void wl::shell_surface::handle_popup_done(void*, wl_shell_surface*) {
 }
 void wl::shell_surface::set_toplevel() {
-    wl_shell_surface_set_toplevel(hnd);
+    wl_shell_surface_set_toplevel(hnd.get());
 }
 
 namespace wl {
+    struct shell_deleter {
+        void operator()(wl_shell*) const;
+    };
     class shell {
-        wl_shell* const hnd;
+        std::unique_ptr<wl_shell, shell_deleter> const hnd;
     public:
         explicit shell(wl_shell*);
-        shell(const shell&) = delete;
-        ~shell();
         explicit operator const wl_shell*() const;
         shell_surface make_surface(const surface&);
     };
+}
+void wl::shell_deleter::operator()(wl_shell* shell) const {
+    wl_shell_destroy(shell);
 }
 wl::shell::shell(wl_shell* shell) : hnd(shell) {
     if (!hnd) {
         throw std::runtime_error("Can't create shell from nullptr!");
     }
 }
-wl::shell::~shell() {
-    fmt::print("destroying shell\n");
-    wl_shell_destroy(hnd);
-}
 wl::shell_surface wl::shell::make_surface(const surface& surface) {
-    return wl::shell_surface{ wl_shell_get_shell_surface(hnd, static_cast<wl_surface*>(surface)) };
+    return wl::shell_surface{ wl_shell_get_shell_surface(hnd.get(), static_cast<wl_surface*>(surface)) };
 }
 
 namespace wl {
+    struct shm_pool_deleter {
+        void operator()(wl_shm_pool*) const;
+    };
     class shm_pool {
-        wl_shm_pool* const hnd;
+        std::unique_ptr<wl_shm_pool, shm_pool_deleter> const hnd;
     public:
         explicit shm_pool(wl_shm_pool*);
-        shm_pool(const shm_pool&) = delete;
-        ~shm_pool();
         explicit operator wl_shm_pool*() const;
         buffer make_buffer(std::int32_t offset, std::int32_t width, std::int32_t height, std::int32_t stride, std::int32_t format);
     };
+}
+void wl::shm_pool_deleter::operator()(wl_shm_pool* pool) const {
+    wl_shm_pool_destroy(pool);
 }
 wl::shm_pool::shm_pool(wl_shm_pool* pool) : hnd(pool) {
     if (!hnd) {
@@ -207,18 +234,18 @@ wl::shm_pool::shm_pool(wl_shm_pool* pool) : hnd(pool) {
     }
 }
 wl::shm_pool::operator wl_shm_pool*() const {
-    return hnd;
+    return hnd.get();
 }
 wl::buffer wl::shm_pool::make_buffer(std::int32_t offset, std::int32_t width, std::int32_t height, std::int32_t stride, std::int32_t format) {
-    return wl::buffer{ wl_shm_pool_create_buffer(hnd, offset, width, height, stride, format) };
-}
-wl::shm_pool::~shm_pool() {
-    wl_shm_pool_destroy(hnd);
+    return wl::buffer{ wl_shm_pool_create_buffer(hnd.get(), offset, width, height, stride, format) };
 }
 
 namespace wl {
+    struct shm_deleter {
+        void operator()(wl_shm*) const;
+    };
     class shm {
-        wl_shm* const hnd;
+        std::unique_ptr<wl_shm, shm_deleter> const hnd;
         static void format(void* data, wl_shm* shm, std::uint32_t format);
         wl_shm_listener listener { format };
     public:
@@ -226,6 +253,9 @@ namespace wl {
         explicit operator wl_shm*() const;
         shm_pool make_pool(std::int32_t fd, std::int32_t size);
     };
+}
+void wl::shm_deleter::operator()(wl_shm* shm) const {
+    wl_shm_destroy(shm);
 }
 wl::shm::shm(wl_shm* shm) : hnd(shm) {
     if (!hnd) {
@@ -237,15 +267,18 @@ void wl::shm::format(void* data, wl_shm* shm, std::uint32_t format) {
     fmt::print("Format {}\n", format);
 }
 wl::shm::operator wl_shm*() const {
-    return hnd;
+    return hnd.get();
 }
 wl::shm_pool wl::shm::make_pool(std::int32_t fd, std::int32_t size) {
-    return wl::shm_pool { wl_shm_create_pool(hnd, fd, size) };
+    return wl::shm_pool { wl_shm_create_pool(hnd.get(), fd, size) };
 }
 
 namespace wl {
+    struct registry_deleter {
+        void operator()(wl_registry*) const;
+    };
     class registry {
-        wl_registry* hnd;
+        std::unique_ptr<wl_registry, registry_deleter> hnd;
         std::forward_list<unique_any> objects;
         static void handler(void* data, wl_registry* registry, std::uint32_t id, const char* iface_name, std::uint32_t version);
         static void remover(void* data, wl_registry* registry, std::uint32_t id);
@@ -253,7 +286,6 @@ namespace wl {
         
     public:
         explicit registry(wl_registry*);
-        registry(const registry&) = delete;
         explicit operator wl_registry*() const;
         
         template<typename T>
@@ -268,11 +300,14 @@ namespace wl {
         }
     };
 }
-wl::registry::registry(wl_registry* registry) : hnd{registry} {
+void wl::registry_deleter::operator()(wl_registry* reg) const {
+    wl_registry_destroy(reg);
+}
+wl::registry::registry(wl_registry* registry) : hnd(registry) {
     if (!hnd) {
         throw std::runtime_error("Can't create registry from nullptr!");
     }
-    wl_registry_add_listener(hnd, &listener, this);
+    wl_registry_add_listener(hnd.get(), &listener, this);
 }
 void wl::registry::handler(void* data, wl_registry* registry, std::uint32_t id, const char* iface, std::uint32_t version) {
     auto& reg = *reinterpret_cast<wl::registry*>(data);
@@ -303,35 +338,36 @@ void wl::registry::remover(void* data, wl_registry* registry, std::uint32_t id) 
     fmt::print("Got a registry losing event for id {}\n", id);
 }
 wl::registry::operator wl_registry*() const {
-    return hnd;
+    return hnd.get();
 }
 
 namespace wl {
+    struct display_deleter {
+        void operator()(wl_display*) const;
+    };
     class display {
-        wl_display* const hnd;
+        std::unique_ptr<wl_display, display_deleter> const hnd;
     public:
         display();
-        ~display();
         registry make_registry();
         int dispatch();
         void roundtrip();
         EGLDisplay egl();
     };
 };
+void wl::display_deleter::operator()(wl_display* dpy) const {
+    wl_display_disconnect(dpy);
+}
 wl::display::display() : hnd(wl_display_connect(nullptr)) {
     if (!hnd) {
         throw std::runtime_error("Can't connect to wayland");
     }
 }
-wl::display::~display() {
-    fmt::print("!!!!Disconnecting\n");
-    wl_display_disconnect(hnd);
-}
 wl::registry wl::display::make_registry() {
-    return wl::registry{wl_display_get_registry(hnd)};
+    return wl::registry{wl_display_get_registry(hnd.get())};
 }
 int wl::display::dispatch() {
-    int count = wl_display_dispatch(hnd);
+    int count = wl_display_dispatch(hnd.get());
     if (count == -1) {
         throw std::runtime_error("Dispatch failed!");
     } else {
@@ -339,12 +375,12 @@ int wl::display::dispatch() {
     }
 }
 void wl::display::roundtrip() {
-    wl_display_roundtrip(hnd);
+    wl_display_roundtrip(hnd.get());
 }
 
 EGLDisplay wl::display::egl() {
-    EGLDisplay dpy = eglGetDisplay(hnd);
-    if (hnd == EGL_NO_DISPLAY) {
+    EGLDisplay dpy = eglGetDisplay(hnd.get());
+    if (dpy == EGL_NO_DISPLAY) {
         throw std::runtime_error("Can't get egl display\n");
     } else {
         return dpy;
