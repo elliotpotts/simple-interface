@@ -398,6 +398,33 @@ EGLContext init_egl(EGLDisplay dpy) {
     }
 }
 
+namespace ipc = boost::interprocess;
+class shm_backed_buffer {
+    static ipc::shared_memory_object make_shm_obj(int width, int height);
+public:
+    ipc::shared_memory_object shm_obj;
+    ipc::mapped_region pixels;
+    wl::shm_pool pool;
+    wl::buffer buffer;
+    shm_backed_buffer(wl::shm&, int width, int height);
+};
+ipc::shared_memory_object shm_backed_buffer::make_shm_obj(int width, int height) {
+    ipc::shared_memory_object shm_obj {
+        ipc::open_or_create,
+        "foobar",
+        ipc::read_write
+    };
+    shm_obj.truncate(width * height * bytes_per_pixel);
+    return shm_obj;
+}
+shm_backed_buffer::shm_backed_buffer(wl::shm& shm_iface, int width, int height) :
+    shm_obj{make_shm_obj(width, height)},
+    pixels{shm_obj, ipc::read_write},
+    pool{shm_iface.make_pool(shm_obj.get_mapping_handle().handle, pixels.get_size())},
+    buffer(pool.make_buffer(0, width, height, width * bytes_per_pixel, WL_SHM_FORMAT_XRGB8888))
+    {
+}
+
 int main() {
     wl::display my_display;
     wl::registry my_registry = my_display.make_registry();
@@ -413,33 +440,16 @@ int main() {
     
     auto& my_shm = my_registry.get<wl::shm>();
 
-    //make_window function. eventually abstract surface + buffer (shm, drm)  pair
-    namespace ipc = boost::interprocess;
-    ipc::shared_memory_object shm_obj {
-        ipc::open_or_create,
-        "foobar",
-        ipc::read_write
-    };
-    const int stride = win_width * bytes_per_pixel;
-    const int size = stride * win_height;
-    shm_obj.truncate(size);
-
-    ipc::mapped_region region {shm_obj, ipc::read_write};
-    
-    int fd = shm_obj.get_mapping_handle().handle; //WARNING: platform-specific
-    wl::shm_pool my_pool = my_shm.make_pool(fd, size);
-    wl::buffer my_buffer = my_pool.make_buffer(0, win_width, win_height, stride, WL_SHM_FORMAT_XRGB8888);
-    
-    my_surface.attach(my_buffer, 0, 0);
-    // end make_window
+    shm_backed_buffer my_buffer {my_shm, win_width, win_height};
+    my_surface.attach(my_buffer.buffer, 0, 0);
 
     std::function<void()> attach_paint_again;
     auto paint =
         [&](std::chrono::milliseconds ms) {
             fmt::print("painting\n");
             std::fill(
-                static_cast<int*>(region.get_address()),
-                static_cast<int*>(region.get_address()) + win_width * win_height,
+                static_cast<int*>(my_buffer.pixels.get_address()),
+                static_cast<int*>(my_buffer.pixels.get_address()) + win_width * win_height,
                 static_cast<int>(std::sin(ms.count()) * 0x00ff00)
             );
             wl_surface_damage_buffer(static_cast<wl_surface*>(my_surface), 0, 0, win_width, win_height);
