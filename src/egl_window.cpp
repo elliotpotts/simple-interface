@@ -2,12 +2,10 @@
 #include <fmt/format.h>
 #include <si/egl.hpp>
 
-#include <GL/gl.h>
-
 void wl::egl_window_deleter::operator()(wl_egl_window* win) const {
     wl_egl_window_destroy(win);
 }
-wl::egl_window::egl_window(EGLDisplay egl_display, EGLConfig egl_config, EGLContext egl_context, surface& from, int w, int h):
+wl::egl_window::egl_window(EGLDisplay egl_display, EGLConfig egl_config, EGLContext egl_context, wl::surface& from, int w, int h):
     hnd {wl_egl_window_create(static_cast<wl_surface*>(from), w, h)} {
     if (hnd.get() == EGL_NO_SURFACE) {
         hnd.release();
@@ -18,20 +16,7 @@ wl::egl_window::egl_window(EGLDisplay egl_display, EGLConfig egl_config, EGLCont
     if (egl_surface == EGL_NO_SURFACE) {
         egl_throw();
     }
-
-    if (eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) {
-        fmt::print("egl made current.\n");
-    } else {
-        egl_throw();
-    }
-
-    glClearColor(1.0, 1.0, 0.0, 1.0);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glFlush();
-
-    if (eglSwapBuffers(egl_display, egl_surface)) {
-        fmt::print("egl buffer swapped\n");
-    } else {
-        egl_throw();
-    }
+}
+EGLSurface wl::egl_window::surface() const {
+    return egl_surface;
 }

@@ -16,6 +16,7 @@ namespace wl {
         EGLSurface egl_surface;
     public:
         egl_window(EGLDisplay egl_display, EGLConfig egl_config, EGLContext egl_context, surface& from, int w, int h);
+        EGLSurface surface() const;
     };
 }
 
