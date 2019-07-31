@@ -348,9 +348,9 @@ void wl::display::roundtrip() {
     wl_display_roundtrip(hnd.get());
 }
 
-void egl_throw() {
+[[noreturn]] void egl_throw() {
     switch (eglGetError()) {
-    case EGL_SUCCESS: return;
+    case EGL_SUCCESS: throw std::runtime_error("failed successfully");
     case EGL_NOT_INITIALIZED: throw std::runtime_error("EGL_NOT_INITIALIZED");
     case EGL_BAD_ACCESS: throw std::runtime_error("EGL_BAD_ACCESS");
     case EGL_BAD_ALLOC: throw std::runtime_error("EGL_BAD_ALLOC");
@@ -370,11 +370,11 @@ void egl_throw() {
 }
 
 EGLDisplay wl::display::egl() {
-    EGLDisplay dpy = eglGetDisplay(hnd.get());
-    if (dpy == EGL_NO_DISPLAY) {
+    if (EGLDisplay dpy = eglGetDisplay(hnd.get()); dpy == EGL_NO_DISPLAY) {
         egl_throw();
+    } else {
+        return dpy;
     }
-    return dpy;
 }
 
 namespace ipc = boost::interprocess;
@@ -455,7 +455,11 @@ void describe_config(EGLDisplay dpy, EGLConfig cfg) {
     eglGetConfigAttrib(dpy, cfg, EGL_RED_SIZE, &val);
     fmt::print("   EGL_RED_SIZE: {}\n", val);
     eglGetConfigAttrib(dpy, cfg, EGL_RENDERABLE_TYPE, &val);
-    fmt::print("   EGL_RENDERABLE_TYPE: {}\n", val);
+    fmt::print("   EGL_RENDERABLE_TYPE: {} | {} | {} | {}\n",
+               val & EGL_OPENGL_BIT ? "EGL_OPENGL_BIT" : "",
+               val & EGL_OPENGL_ES_BIT ? "EGL_OPENGL_ES_BIT " : "",
+               val & EGL_OPENGL_ES2_BIT ? "EGL_OPENGL_ES2_BIT" : "",
+               val & EGL_OPENVG_BIT ? "EGL_OPENVG_BIT" : "");
     eglGetConfigAttrib(dpy, cfg, EGL_SAMPLE_BUFFERS, &val);
     fmt::print("   EGL_SAMPLE_BUFFERS: {}\n", val);
     eglGetConfigAttrib(dpy, cfg, EGL_SAMPLES, &val);
@@ -581,7 +585,7 @@ int main() {
     auto egl_display = my_display.egl();
     auto [egl_context, egl_config] = init_egl(egl_display);
     describe_config(egl_display, egl_config);
-    wl::egl_window egl_window(egl_display, egl_context, egl_config, my_surface, 600, 480);
+    wl::egl_window egl_window(egl_display, egl_config, egl_context, my_surface, 600, 480);
     
     while (my_display.dispatch()) {
     }
