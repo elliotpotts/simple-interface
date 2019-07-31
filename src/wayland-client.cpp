@@ -348,13 +348,33 @@ void wl::display::roundtrip() {
     wl_display_roundtrip(hnd.get());
 }
 
+void egl_throw() {
+    switch (eglGetError()) {
+    case EGL_SUCCESS: return;
+    case EGL_NOT_INITIALIZED: throw std::runtime_error("EGL_NOT_INITIALIZED");
+    case EGL_BAD_ACCESS: throw std::runtime_error("EGL_BAD_ACCESS");
+    case EGL_BAD_ALLOC: throw std::runtime_error("EGL_BAD_ALLOC");
+    case EGL_BAD_ATTRIBUTE: throw std::runtime_error("EGL_BAD_ATTRIBUTE");
+    case EGL_BAD_CONTEXT: throw std::runtime_error("EGL_BAD_CONTEXT");
+    case EGL_BAD_CONFIG: throw std::runtime_error("EGL_BAD_CONFIG");
+    case EGL_BAD_CURRENT_SURFACE: throw std::runtime_error("EGL_BAD_CURRENT_SURFACE");
+    case EGL_BAD_DISPLAY: throw std::runtime_error("EGL_BAD_DISPLAY");
+    case EGL_BAD_SURFACE: throw std::runtime_error("EGL_BAD_SURFACE");
+    case EGL_BAD_MATCH: throw std::runtime_error("EGL_BAD_MATCH");
+    case EGL_BAD_PARAMETER: throw std::runtime_error("EGL_BAD_PARAMETER");
+    case EGL_BAD_NATIVE_PIXMAP: throw std::runtime_error("EGL_BAD_NATIVE_PIXMAP");
+    case EGL_BAD_NATIVE_WINDOW: throw std::runtime_error("EGL_BAD_NATIVE_WINDOW");
+    case EGL_CONTEXT_LOST: throw std::runtime_error("EGL_CONTEXT_LOST");
+    default: throw std::runtime_error("unknown error");
+    }
+}
+
 EGLDisplay wl::display::egl() {
     EGLDisplay dpy = eglGetDisplay(hnd.get());
     if (dpy == EGL_NO_DISPLAY) {
-        throw std::runtime_error("Can't get egl display\n");
-    } else {
-        return dpy;
+        egl_throw();
     }
+    return dpy;
 }
 
 namespace ipc = boost::interprocess;
@@ -386,13 +406,8 @@ shm_backed_buffer::shm_backed_buffer(wl::shm& shm_iface, int width, int height) 
 
 void describe_config(EGLDisplay dpy, EGLConfig cfg) {
     EGLint val = 0;
-    if(!eglGetConfigAttrib(dpy, cfg, EGL_ALPHA_SIZE, &val)) {
-        switch (eglGetError()) {
-        case EGL_BAD_DISPLAY: throw std::runtime_error("eglGetConfigAttrib: EGL_BAD_DISPLAY");
-        case EGL_NOT_INITIALIZED: throw std::runtime_error("eglGetConfigAttrib: EGL_NOT_INITIALIZED");
-        case EGL_BAD_CONFIG: throw std::runtime_error("eglGetConfigAttrib: EGL_BAD_CONFIG");
-        case EGL_BAD_ATTRIBUTE: throw std::runtime_error("eglGetConfigAttrib: EGL_BAD_ATTRIBUTE");
-        }
+    if (!eglGetConfigAttrib(dpy, cfg, EGL_ALPHA_SIZE, &val)) {
+        egl_throw();
     }
     fmt::print("   EGL_ALPHA_SIZE: {}\n", val);
     eglGetConfigAttrib(dpy, cfg, EGL_ALPHA_MASK_SIZE, &val);
@@ -462,19 +477,16 @@ void describe_config(EGLDisplay dpy, EGLConfig cfg) {
 std::tuple<EGLContext, EGLConfig> init_egl(EGLDisplay dpy) {
     EGLint major;
     EGLint minor;
-    EGLBoolean initialized = eglInitialize(dpy, &major, &minor);
-    if (initialized == EGL_BAD_DISPLAY) {
-        throw std::runtime_error("EGL initialization failed (EGL_BAD_DISPLAY)");
-    } else if (initialized == EGL_NOT_INITIALIZED) {
-        throw std::runtime_error("EGL initialization failed (EGL_NOT_INITIALIZED)");
-    } else if (initialized == EGL_FALSE) {
-        throw std::runtime_error("EGL initialization failed (unknown reason)");
-    } else {
+    if (eglInitialize(dpy, &major, &minor)) {
         fmt::print("Initialized egl {}.{}\n", major, minor);
+    } else {
+        egl_throw();
     }
 
     EGLint total_config_count;
-    eglGetConfigs(dpy, nullptr, 0, &total_config_count);
+    if (!eglGetConfigs(dpy, nullptr, 0, &total_config_count)) {
+        egl_throw();
+    }
     fmt::print("{} configs available\n", total_config_count);
 
     EGLint config_attribs[] = {
@@ -487,22 +499,14 @@ std::tuple<EGLContext, EGLConfig> init_egl(EGLDisplay dpy) {
         EGL_NONE
     };
     EGLint matching_config_count;
-    if(!eglChooseConfig(dpy, config_attribs, nullptr, 0, &matching_config_count)) {
-        throw std::runtime_error("eglChooseConfig failed");
+    if (!eglChooseConfig(dpy, config_attribs, nullptr, 0, &matching_config_count)) {
+        egl_throw();
     }
     std::vector<EGLConfig> matching_configs(matching_config_count);
-    eglChooseConfig(dpy, config_attribs, matching_configs.data(), matching_config_count, nullptr);
-    fmt::print("{} configs matching\n", matching_config_count);
-    EGLint val = 0;
-    if(eglGetConfigAttrib(dpy, matching_configs[0], EGL_ALPHA_SIZE, &val) != EGL_TRUE) {
-        switch (eglGetError()) {
-        case EGL_BAD_DISPLAY: throw std::runtime_error("eglGetConfigAttrib: EGL_BAD_DISPLAY");
-        case EGL_NOT_INITIALIZED: throw std::runtime_error("eglGetConfigAttrib: EGL_NOT_INITIALIZED");
-        case EGL_BAD_CONFIG: throw std::runtime_error("eglGetConfigAttrib: EGL_BAD_CONFIG");
-        case EGL_BAD_ATTRIBUTE: throw std::runtime_error("eglGetConfigAttrib: EGL_BAD_ATTRIBUTE");
-        }
+    if (!eglChooseConfig(dpy, config_attribs, matching_configs.data(), matching_config_count, &matching_config_count)) {
+        egl_throw();
     }
-    fmt::print("   EGL_ALPHA_SIZE: {}\n", val);
+    fmt::print("{} configs matching\n", matching_config_count);
 
     if (matching_config_count > 0) {
         fmt::print("choosing first matching config\n");
@@ -513,7 +517,7 @@ std::tuple<EGLContext, EGLConfig> init_egl(EGLDisplay dpy) {
         };
         auto context = eglCreateContext(dpy, context_config, EGL_NO_CONTEXT, context_attribs);
         if (context == EGL_NO_CONTEXT) {
-            throw std::runtime_error("Failed to create EGL context with selected config\n");
+            egl_throw();
         }
         return std::make_tuple(context, context_config);
     } else {
@@ -535,26 +539,18 @@ namespace wl {
             hnd {wl_egl_window_create(static_cast<wl_surface*>(from), w, h)} {
             if (hnd.get() == EGL_NO_SURFACE) {
                 hnd.release();
-                throw std::runtime_error("Cannot create egl window from surface\n");
+                egl_throw();
             }
             
             egl_surface = eglCreateWindowSurface(egl_display, egl_config, hnd.get(), nullptr);
             if (egl_surface == EGL_NO_SURFACE) {
-                switch (eglGetError()) {
-                case EGL_BAD_DISPLAY: throw std::runtime_error("EGL_BAD_DISPLAY");
-                case EGL_NOT_INITIALIZED: throw std::runtime_error("EGL_NOT_INITIALIZED");
-                case EGL_BAD_CONFIG: throw std::runtime_error("EGL_BAD_CONFIG");
-                case EGL_BAD_NATIVE_WINDOW: throw std::runtime_error("EGL_BAD_NATIVE_WINDOW");
-                case EGL_BAD_ATTRIBUTE: throw std::runtime_error("EGL_BAD_ATTRIBUTE");
-                case EGL_BAD_ALLOC: throw std::runtime_error("EGL_BAD_ALLOC");
-                case EGL_BAD_MATCH: throw std::runtime_error("EGL_BAD_MATCH");
-                }
+                egl_throw();
             }
 
             if (eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) {
                 fmt::print("egl made current.\n");
             } else {
-                throw std::runtime_error("Could not make egl current!");
+                egl_throw();
             }
 
             glClearColor(1.0, 1.0, 0.0, 1.0);
@@ -564,13 +560,7 @@ namespace wl {
             if (eglSwapBuffers(egl_display, egl_surface)) {
                 fmt::print("egl buffer swapped\n");
             } else {
-                switch (eglGetError()) {
-                case EGL_FALSE: throw std::runtime_error("egl buffer swapping failed");
-                case EGL_BAD_DISPLAY: throw std::runtime_error("Could not swap egl buffer because the provided display is not egl display");
-                case EGL_NOT_INITIALIZED: throw std::runtime_error("Could not swap egl buffer because the provided display is not initialised");
-                case EGL_BAD_SURFACE: throw std::runtime_error("Could not swap egl buffer because the provided buffer is not an egl buffer");
-                case EGL_CONTEXT_LOST: throw std::runtime_error("Could not swap egl buffer due to a power management event");
-                }
+                egl_throw();
             }
         }
     };
