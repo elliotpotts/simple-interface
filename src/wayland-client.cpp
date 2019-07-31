@@ -15,39 +15,9 @@
 #include <functional>
 #include <cmath>
 #include <EGL/egl.h>
+#include <GL/gl.h>
 #include <array>
-
-class unique_any {
-    struct contents {
-        virtual ~contents() = default;
-    };
-    
-    template<typename T>
-    struct typed_contents : public contents {
-        T storage;
-        template<typename... Args>
-        typed_contents(Args&&... args) : storage{ std::forward<Args>(args)... } {
-        }
-        virtual ~typed_contents() = default;
-    };
-    
-    std::unique_ptr<contents> storage;
-public:
-    template<typename T, typename... Args>
-    unique_any(std::in_place_type_t<T>, Args&&... args) :
-        storage(std::make_unique<typed_contents<T>>(std::forward<Args>(args)...)) {
-    }
-    
-    template<typename T>
-    T* get() {
-        auto ptr = dynamic_cast<typed_contents<T>*>(storage.get());
-        if (ptr) {
-            return &ptr->storage;
-        } else {
-            return nullptr;
-        }
-    }
-};
+#include <unique_any.hpp>
 
 using namespace std::string_literals;
 
@@ -387,53 +357,6 @@ EGLDisplay wl::display::egl() {
     }
 }
 
-EGLContext init_egl(EGLDisplay dpy) {
-    EGLint major;
-    EGLint minor;
-    EGLBoolean initialized = eglInitialize(dpy, &major, &minor);
-    if (initialized == EGL_BAD_DISPLAY) {
-        throw std::runtime_error("EGL initialization failed (EGL_BAD_DISPLAY)");
-    } else if (initialized == EGL_NOT_INITIALIZED) {
-        throw std::runtime_error("EGL initialization failed (EGL_NOT_INITIALIZED)");
-    } else if (initialized == EGL_FALSE) {
-        throw std::runtime_error("EGL initialization failed (unknown reason)");
-    }
-    else {
-        fmt::print("Initialized egl {}.{}\n", major, minor);
-    }
-
-    EGLint total_config_count;
-    eglGetConfigs(dpy, nullptr, 0, &total_config_count);
-    std::vector<EGLConfig> all_configs(total_config_count);
-    eglGetConfigs(dpy, all_configs.data(), total_config_count, nullptr);
-    fmt::print("{} configs available\n", total_config_count);
-
-    EGLint config_attribs[] = {
-        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-        EGL_RED_SIZE, 8,
-        EGL_GREEN_SIZE, 8,
-        EGL_BLUE_SIZE, 8,
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-        EGL_NONE
-    };
-    EGLint matching_config_count;
-    eglChooseConfig(dpy, config_attribs, nullptr, 0, &matching_config_count);
-    std::vector<EGLConfig> matching_configs(matching_config_count);
-    eglChooseConfig(dpy, config_attribs, matching_configs.data(), matching_config_count, nullptr);
-    fmt::print("{} configs matching\n", matching_config_count);
-
-    if (matching_config_count > 0) {
-        fmt::print("choosing 1st config\n");
-        EGLint context_attribs[] = {
-            EGL_CONTEXT_CLIENT_VERSION, 2,
-            EGL_NONE
-        };
-        return eglCreateContext(dpy, matching_configs[0], EGL_NO_CONTEXT, context_attribs);
-    } else {
-        throw std::runtime_error("No matching EGL configs found, cannot create api context");
-    }
-}
-
 namespace ipc = boost::interprocess;
 class shm_backed_buffer {
     static ipc::shared_memory_object make_shm_obj(int width, int height);
@@ -461,47 +384,216 @@ shm_backed_buffer::shm_backed_buffer(wl::shm& shm_iface, int width, int height) 
     {
 }
 
+void describe_config(EGLDisplay dpy, EGLConfig cfg) {
+    EGLint val = 0;
+    if(!eglGetConfigAttrib(dpy, cfg, EGL_ALPHA_SIZE, &val)) {
+        switch (eglGetError()) {
+        case EGL_BAD_DISPLAY: throw std::runtime_error("eglGetConfigAttrib: EGL_BAD_DISPLAY");
+        case EGL_NOT_INITIALIZED: throw std::runtime_error("eglGetConfigAttrib: EGL_NOT_INITIALIZED");
+        case EGL_BAD_CONFIG: throw std::runtime_error("eglGetConfigAttrib: EGL_BAD_CONFIG");
+        case EGL_BAD_ATTRIBUTE: throw std::runtime_error("eglGetConfigAttrib: EGL_BAD_ATTRIBUTE");
+        }
+    }
+    fmt::print("   EGL_ALPHA_SIZE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_ALPHA_MASK_SIZE, &val);
+    fmt::print("   EGL_ALPHA_MASK_SIZE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_BIND_TO_TEXTURE_RGB, &val);
+    fmt::print("   EGL_BIND_TO_TEXTURE_RGB: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_BIND_TO_TEXTURE_RGBA, &val);
+    fmt::print("   EGL_BIND_TO_TEXTURE_RGBA: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_BLUE_SIZE, &val);
+    fmt::print("   EGL_BLUE_SIZE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_BUFFER_SIZE, &val);
+    fmt::print("   EGL_BUFFER_SIZE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_COLOR_BUFFER_TYPE, &val);
+    fmt::print("   EGL_COLOR_BUFFER_TYPE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_CONFIG_CAVEAT, &val);
+    fmt::print("   EGL_CONFIG_CAVEAT: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_CONFIG_ID, &val);
+    fmt::print("   EGL_CONFIG_ID: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_CONFORMANT, &val);
+    fmt::print("   EGL_CONFORMANT: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_DEPTH_SIZE, &val);
+    fmt::print("   EGL_DEPTH_SIZE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_GREEN_SIZE, &val);
+    fmt::print("   EGL_GREEN_SIZE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_LEVEL, &val);
+    fmt::print("   EGL_LEVEL: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_LUMINANCE_SIZE, &val);
+    fmt::print("   EGL_LUMINANCE_SIZE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_MAX_PBUFFER_WIDTH, &val);
+    fmt::print("   EGL_MAX_PBUFFER_WIDTH: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_MAX_PBUFFER_HEIGHT, &val);
+    fmt::print("   EGL_MAX_PBUFFER_HEIGHT: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_MAX_PBUFFER_PIXELS, &val);
+    fmt::print("   EGL_MAX_PBUFFER_PIXELS: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_MAX_SWAP_INTERVAL, &val);
+    fmt::print("   EGL_MAX_SWAP_INTERVAL: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_MIN_SWAP_INTERVAL, &val);
+    fmt::print("   EGL_MIN_SWAP_INTERVAL: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_NATIVE_RENDERABLE, &val);
+    fmt::print("   EGL_NATIVE_RENDERABLE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_NATIVE_VISUAL_ID, &val);
+    fmt::print("   EGL_NATIVE_VISUAL_ID: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_NATIVE_VISUAL_TYPE, &val);
+    fmt::print("   EGL_NATIVE_VISUAL_TYPE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_RED_SIZE, &val);
+    fmt::print("   EGL_RED_SIZE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_RENDERABLE_TYPE, &val);
+    fmt::print("   EGL_RENDERABLE_TYPE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_SAMPLE_BUFFERS, &val);
+    fmt::print("   EGL_SAMPLE_BUFFERS: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_SAMPLES, &val);
+    fmt::print("   EGL_SAMPLES: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_STENCIL_SIZE, &val);
+    fmt::print("   EGL_STENCIL_SIZE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_SURFACE_TYPE, &val);
+    fmt::print("   EGL_SURFACE_TYPE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_TRANSPARENT_TYPE, &val);
+    fmt::print("   EGL_TRANSPARENT_TYPE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_TRANSPARENT_RED_VALUE, &val);
+    fmt::print("   EGL_TRANSPARENT_RED_VALUE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_TRANSPARENT_GREEN_VALUE, &val);
+    fmt::print("   EGL_TRANSPARENT_GREEN_VALUE: {}\n", val);
+    eglGetConfigAttrib(dpy, cfg, EGL_TRANSPARENT_BLUE_VALUE, &val);
+    fmt::print("   EGL_TRANSPARENT_BLUE_VALUE: {}\n", val);
+}
+
+std::tuple<EGLContext, EGLConfig> init_egl(EGLDisplay dpy) {
+    EGLint major;
+    EGLint minor;
+    EGLBoolean initialized = eglInitialize(dpy, &major, &minor);
+    if (initialized == EGL_BAD_DISPLAY) {
+        throw std::runtime_error("EGL initialization failed (EGL_BAD_DISPLAY)");
+    } else if (initialized == EGL_NOT_INITIALIZED) {
+        throw std::runtime_error("EGL initialization failed (EGL_NOT_INITIALIZED)");
+    } else if (initialized == EGL_FALSE) {
+        throw std::runtime_error("EGL initialization failed (unknown reason)");
+    } else {
+        fmt::print("Initialized egl {}.{}\n", major, minor);
+    }
+
+    EGLint total_config_count;
+    eglGetConfigs(dpy, nullptr, 0, &total_config_count);
+    fmt::print("{} configs available\n", total_config_count);
+
+    EGLint config_attribs[] = {
+        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+        EGL_RED_SIZE, 8,
+        EGL_GREEN_SIZE, 8,
+        EGL_BLUE_SIZE, 8,
+        EGL_ALPHA_SIZE, 8,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+        EGL_NONE
+    };
+    EGLint matching_config_count;
+    if(!eglChooseConfig(dpy, config_attribs, nullptr, 0, &matching_config_count)) {
+        throw std::runtime_error("eglChooseConfig failed");
+    }
+    std::vector<EGLConfig> matching_configs(matching_config_count);
+    eglChooseConfig(dpy, config_attribs, matching_configs.data(), matching_config_count, nullptr);
+    fmt::print("{} configs matching\n", matching_config_count);
+    EGLint val = 0;
+    if(eglGetConfigAttrib(dpy, matching_configs[0], EGL_ALPHA_SIZE, &val) != EGL_TRUE) {
+        switch (eglGetError()) {
+        case EGL_BAD_DISPLAY: throw std::runtime_error("eglGetConfigAttrib: EGL_BAD_DISPLAY");
+        case EGL_NOT_INITIALIZED: throw std::runtime_error("eglGetConfigAttrib: EGL_NOT_INITIALIZED");
+        case EGL_BAD_CONFIG: throw std::runtime_error("eglGetConfigAttrib: EGL_BAD_CONFIG");
+        case EGL_BAD_ATTRIBUTE: throw std::runtime_error("eglGetConfigAttrib: EGL_BAD_ATTRIBUTE");
+        }
+    }
+    fmt::print("   EGL_ALPHA_SIZE: {}\n", val);
+
+    if (matching_config_count > 0) {
+        fmt::print("choosing first matching config\n");
+        auto context_config = matching_configs[0];
+        EGLint context_attribs[] = {
+            EGL_CONTEXT_CLIENT_VERSION, 2,
+            EGL_NONE
+        };
+        auto context = eglCreateContext(dpy, context_config, EGL_NO_CONTEXT, context_attribs);
+        if (context == EGL_NO_CONTEXT) {
+            throw std::runtime_error("Failed to create EGL context with selected config\n");
+        }
+        return std::make_tuple(context, context_config);
+    } else {
+        throw std::runtime_error("No matching EGL configs found, cannot create api context");
+    }
+}
+
+namespace wl {
+    class egl_window {
+        struct egl_window_deleter {
+            void operator()(wl_egl_window* win) const {
+                wl_egl_window_destroy(win);
+            }
+        };
+        std::unique_ptr<wl_egl_window, egl_window_deleter> hnd;
+        EGLSurface egl_surface;
+    public:
+        egl_window(EGLDisplay egl_display, EGLConfig egl_config, EGLContext egl_context, surface& from, int w, int h):
+            hnd {wl_egl_window_create(static_cast<wl_surface*>(from), w, h)} {
+            if (hnd.get() == EGL_NO_SURFACE) {
+                hnd.release();
+                throw std::runtime_error("Cannot create egl window from surface\n");
+            }
+            
+            egl_surface = eglCreateWindowSurface(egl_display, egl_config, hnd.get(), nullptr);
+            if (egl_surface == EGL_NO_SURFACE) {
+                switch (eglGetError()) {
+                case EGL_BAD_DISPLAY: throw std::runtime_error("EGL_BAD_DISPLAY");
+                case EGL_NOT_INITIALIZED: throw std::runtime_error("EGL_NOT_INITIALIZED");
+                case EGL_BAD_CONFIG: throw std::runtime_error("EGL_BAD_CONFIG");
+                case EGL_BAD_NATIVE_WINDOW: throw std::runtime_error("EGL_BAD_NATIVE_WINDOW");
+                case EGL_BAD_ATTRIBUTE: throw std::runtime_error("EGL_BAD_ATTRIBUTE");
+                case EGL_BAD_ALLOC: throw std::runtime_error("EGL_BAD_ALLOC");
+                case EGL_BAD_MATCH: throw std::runtime_error("EGL_BAD_MATCH");
+                }
+            }
+
+            if (eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) {
+                fmt::print("egl made current.\n");
+            } else {
+                throw std::runtime_error("Could not make egl current!");
+            }
+
+            glClearColor(1.0, 1.0, 0.0, 1.0);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glFlush();
+
+            if (eglSwapBuffers(egl_display, egl_surface)) {
+                fmt::print("egl buffer swapped\n");
+            } else {
+                switch (eglGetError()) {
+                case EGL_FALSE: throw std::runtime_error("egl buffer swapping failed");
+                case EGL_BAD_DISPLAY: throw std::runtime_error("Could not swap egl buffer because the provided display is not egl display");
+                case EGL_NOT_INITIALIZED: throw std::runtime_error("Could not swap egl buffer because the provided display is not initialised");
+                case EGL_BAD_SURFACE: throw std::runtime_error("Could not swap egl buffer because the provided buffer is not an egl buffer");
+                case EGL_CONTEXT_LOST: throw std::runtime_error("Could not swap egl buffer due to a power management event");
+                }
+            }
+        }
+    };
+}
+
+
 int main() {
     wl::display my_display;
     wl::registry my_registry = my_display.make_registry();
-    my_display.roundtrip(); // wait until they're processed by the server, or something :V
-    init_egl(my_display.egl());
-
-    auto& my_compositor = my_registry.get<wl::compositor>();
-    wl::surface my_surface = my_compositor.make_surface();
-    
+    my_display.roundtrip(); // wait for messages sent by server in order to register handlers for servicse
+    auto& my_compositor = my_registry.get<wl::compositor>();    
     auto& my_shell = my_registry.get<wl::shell>();
+    
+    wl::surface my_surface = my_compositor.make_surface();
     wl::shell_surface my_shell_surface = my_shell.make_surface(my_surface);
     my_shell_surface.set_toplevel();
+
+    auto egl_display = my_display.egl();
+    auto [egl_context, egl_config] = init_egl(egl_display);
+    describe_config(egl_display, egl_config);
+    wl::egl_window egl_window(egl_display, egl_context, egl_config, my_surface, 600, 480);
     
-    auto& my_shm = my_registry.get<wl::shm>();
-
-    shm_backed_buffer my_buffer {my_shm, win_width, win_height};
-    my_surface.attach(my_buffer.buffer, 0, 0);
-
-    std::function<void()> attach_paint_again;
-    auto paint =
-        [&](std::chrono::milliseconds ms) {
-            fmt::print("painting\n");
-            std::fill(
-                static_cast<int*>(my_buffer.pixels.get_address()),
-                static_cast<int*>(my_buffer.pixels.get_address()) + win_width * win_height,
-                static_cast<int>(std::sin(ms.count()) * 0x00ff00)
-            );
-            wl_surface_damage_buffer(static_cast<wl_surface*>(my_surface), 0, 0, win_width, win_height);
-            attach_paint_again();
-            my_surface.commit();
-        };
-    attach_paint_again =
-        [&](){
-            my_surface.onframe(paint);
-        };
-    
-    my_surface.onframe(paint); //The frame request will take effect on the next wl_surface.commit.
-    my_surface.commit();
-
     while (my_display.dispatch()) {
-        fmt::print("d'd\n");
     }
 
     return 0;

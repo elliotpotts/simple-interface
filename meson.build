@@ -6,10 +6,11 @@ fmt = dependency('fmt')
 wayland_client = dependency('wayland-client')
 wayland_egl = dependency('wayland-egl')
 egl = dependency('egl')
+gl = dependency('gl')
 
 executable('main',
     ['src/wayland-client.cpp'],
-    dependencies: [fmt, wayland_client, wayland_egl, egl],
+    dependencies: [fmt, wayland_client, wayland_egl, egl, gl],
     include_directories: includes,
     link_args: '-lrt'
 )
