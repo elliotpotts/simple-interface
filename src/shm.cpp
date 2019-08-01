@@ -8,10 +8,10 @@ wl::shm::shm(wl_shm* shm) : hnd(shm) {
     if (!hnd) {
         throw std::runtime_error("Can't create shm from nullptr!");
     }
-    wl_shm_add_listener(shm, &listener, nullptr);
+    wl_shm_add_listener(shm, &listener, this);
 }
-void wl::shm::format(void* data, wl_shm* shm, std::uint32_t format) {
-    fmt::print("Format {}\n", format);
+void wl::shm::dispatch_format(void* data, wl_shm* shm, std::uint32_t format) {
+    fmt::print("Format {} is valid\n", format);
 }
 wl::shm::operator wl_shm*() const {
     return hnd.get();

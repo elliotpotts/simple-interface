@@ -11,8 +11,8 @@ namespace wl {
     };
     class shm {
         std::unique_ptr<wl_shm, shm_deleter> const hnd;
-        static void format(void* data, wl_shm* shm, std::uint32_t format);
-        wl_shm_listener listener { format };
+        static void dispatch_format(void* data, wl_shm* shm, std::uint32_t format);
+        wl_shm_listener listener { dispatch_format };
     public:
         explicit shm(wl_shm*);
         explicit operator wl_shm*() const;
