@@ -19,8 +19,8 @@ inline constexpr int win_height = 360;
 int main() {
     wl::display my_display;
     wl::registry my_registry = my_display.make_registry();
-    my_display.roundtrip(); // wait for messages sent by server in order to register handlers for servicse
-    my_display.roundtrip(); // this is a real hack
+    //my_display.dispatch(); // TODO: Figure out when I need to dispatch/roundtrip
+    my_display.roundtrip();
 
     auto& my_compositor = my_registry.get<wl::compositor>();
     auto& my_shell = my_registry.get<wl::shell>();
