@@ -2,6 +2,7 @@
 #include <si/wl/compositor.hpp>
 #include <si/wl/shell.hpp>
 #include <si/wl/shm.hpp>
+#include <si/wl/seat.hpp>
 #include <fmt/format.h>
 #include <string>
 
@@ -16,9 +17,8 @@ wl::registry::registry(wl_registry* registry) : hnd(registry) {
     }
     wl_registry_add_listener(hnd.get(), &listener, this);
 }
-void wl::registry::handler(void* data, wl_registry* registry, std::uint32_t id, const char* iface, std::uint32_t version) {
+void wl::registry::handler(void* data, wl_registry* reg_ptr, std::uint32_t id, const char* iface, std::uint32_t version) {
     auto& reg = *reinterpret_cast<wl::registry*>(data);
-    auto reg_ptr = static_cast<wl_registry*>(reg);
     if (iface == "wl_compositor"s) {
         reg.objects.emplace_front (
             std::in_place_type<compositor>,
@@ -34,8 +34,12 @@ void wl::registry::handler(void* data, wl_registry* registry, std::uint32_t id, 
             std::in_place_type<shm>,
             static_cast<wl_shm*> (wl_registry_bind(reg_ptr, id, &wl_shm_interface, version))
         );
-    }
-    else {
+    } else if (iface == "wl_seat"s) {
+        reg.objects.emplace_front (
+            std::in_place_type<si::wl::seat>,
+            static_cast<wl_seat*> (wl_registry_bind(reg_ptr, id, &wl_seat_interface, version))
+        );
+    } else {
         fmt::print("{:>3}: {}: no handler\n", id, iface);
         return;
     }

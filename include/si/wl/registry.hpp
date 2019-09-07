@@ -14,6 +14,7 @@ namespace wl {
     class registry {
         std::unique_ptr<wl_registry, registry_deleter> hnd;
         std::forward_list<unique_any> objects;
+        
         static void handler(void* data, wl_registry* registry, std::uint32_t id, const char* iface_name, std::uint32_t version);
         static void remover(void* data, wl_registry* registry, std::uint32_t id);
         wl_registry_listener listener { handler, remover };

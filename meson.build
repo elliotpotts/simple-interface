@@ -3,7 +3,7 @@ project('si', 'cpp', 'c', default_options: ['cpp_std=c++2a'], version: '0.1')
 includes = include_directories('include')
 
 deps = [dependency('fmt')]
-src = ['src/buffer.cpp', 'src/compositor.cpp', 'src/display.cpp', 'src/egl/display.cpp', 'src/egl.cpp', 'src/egl_window.cpp', 'src/registry.cpp', 'src/shell.cpp', 'src/shell_surface.cpp', 'src/shm_buffer.cpp', 'src/shm.cpp', 'src/shm_pool.cpp', 'src/surface.cpp', 'src/wayland-client.cpp']
+src = ['src/buffer.cpp', 'src/compositor.cpp', 'src/display.cpp', 'src/egl/display.cpp', 'src/egl.cpp', 'src/egl_window.cpp', 'src/registry.cpp', 'src/seat.cpp', 'src/shell.cpp', 'src/shell_surface.cpp', 'src/shm_buffer.cpp', 'src/shm.cpp', 'src/shm_pool.cpp', 'src/surface.cpp', 'src/wayland-client.cpp', 'src/wl/keyboard.cpp', 'src/wl/pointer.cpp']
 
 if get_option('support_gl').enabled()
   add_project_arguments('-DSI_GL_SUPPORTED', language : 'cpp')

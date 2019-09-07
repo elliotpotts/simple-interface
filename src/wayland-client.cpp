@@ -1,11 +1,13 @@
 #include <fmt/format.h>
 #include <algorithm>
+#include <chrono>
 
 #include <si/wl/display.hpp>
 #include <si/wl/registry.hpp>
 #include <si/wl/compositor.hpp>
 #include <si/wl/shell.hpp>
 #include <si/wl/shm.hpp>
+#include <si/wl/seat.hpp>
 
 #include <si/egl.hpp>
 #include <si/wl/egl_window.hpp>
@@ -15,6 +17,13 @@
 
 inline constexpr int win_width = 480;
 inline constexpr int win_height = 360;
+auto start_time = std::chrono::system_clock::now();
+
+void paint() {
+    glClearColor(1.0, 1.0, 0.0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glFlush();
+}
 
 int main() {
     wl::display my_display;
@@ -23,9 +32,12 @@ int main() {
     my_display.roundtrip();
 
     auto& my_compositor = my_registry.get<wl::compositor>();
+    auto& my_seat = my_registry.get<si::wl::seat>();
+    auto my_ptr = my_seat.pointer();
+    auto my_keyboard = my_seat.keyboard();
     auto& my_shell = my_registry.get<wl::shell>();
 
-    wl::surface my_surface = my_compositor.make_surface();
+    wl::surface my_surface = my_compositor.make_surface();   
     wl::shell_surface my_shell_surface = my_shell.make_surface(my_surface);
     my_shell_surface.set_toplevel();
 
@@ -43,14 +55,13 @@ int main() {
             egl_throw();
         }
 
-        glClearColor(1.0, 1.0, 0.0, 1.0);
-        glClear(GL_COLOR_BUFFER_BIT);
-        glFlush();
-
-        if (eglSwapBuffers(egl_display, egl_window.surface())) {
-            fmt::print("egl buffer swapped\n");
-        } else {
-            egl_throw();
+        for (unsigned i = 0; i < 1; i++) {
+            paint();            
+            if (eglSwapBuffers(egl_display, egl_window.surface())) {
+                fmt::print("egl buffer swapped\n");
+            } else {
+                egl_throw();
+            }
         }
     } else {
         auto& my_shm = my_registry.get<wl::shm>();
@@ -64,7 +75,8 @@ int main() {
 
         my_surface.commit();
     }
-    while (my_display.dispatch()) {
+    while (my_display.dispatch() != -1) {
     }
+    fmt::print("finished\n");
     return 0;
 }
