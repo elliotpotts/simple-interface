@@ -1,0 +1,6 @@
+option('support_wl', type: 'feature', value: 'enabled', description: 'Wayland display support')
+option('support_X', type: 'feature', value: 'enabled', description: 'X11 support')
+option('support_gl', type: 'feature', value: 'enabled', description: 'OpenGL support')
+option('support_gles', type: 'feature', value: 'enabled', description: 'OpenGLES support')
+option('support_shm', type: 'feature', value: 'enabled', description: 'Shared memory buffer support')
+option('support_blend2d', type: 'feature', value: 'auto', description: 'Blend2D graphics library support')

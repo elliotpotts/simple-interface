@@ -29,7 +29,7 @@ int main() {
     wl::shell_surface my_shell_surface = my_shell.make_surface(my_surface);
     my_shell_surface.set_toplevel();
 
-    bool use_acceleration = false;
+    bool use_acceleration = true;
     if (use_acceleration) {
         EGLDisplay egl_display = my_display.egl();
         auto [egl_context, egl_config] = init_egl(egl_display);
