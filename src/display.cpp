@@ -9,6 +9,9 @@ wl::display::display() : hnd(wl_display_connect(nullptr)) {
         throw std::runtime_error("Can't connect to wayland");
     }
 }
+wl::display::operator wl_display*() {
+    return hnd.get();
+}
 wl::registry wl::display::make_registry() {
     return wl::registry{wl_display_get_registry(hnd.get())};
 }

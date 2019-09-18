@@ -6,7 +6,6 @@ void si::wl::seat_deleter::operator()(wl_seat* seat_ptr) const {
     wl_seat_destroy(seat_ptr);
 }
 void si::wl::seat::capabilities(void* data, wl_seat* seat_ptr, std::uint32_t capabilities) {
-    auto& seat = *reinterpret_cast<si::wl::seat*>(data);
     if (capabilities & WL_SEAT_CAPABILITY_POINTER) {
         fmt::print("Incoming seat has pointer\n");
     }

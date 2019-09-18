@@ -16,6 +16,7 @@ namespace wl {
         std::unique_ptr<wl_display, display_deleter> const hnd;
     public:
         display();
+        explicit operator wl_display*();
         registry make_registry();
         int dispatch();
         void roundtrip();
