@@ -19,11 +19,11 @@ using namespace std::literals::string_literals;
 #include <si/shm_buffer.hpp>
 
 #include <GL/gl.h>
-
-#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_wayland.h>
+#include <si/vk_renderer.hpp>
 
 enum draw_method {
     draw_opengl,
@@ -533,8 +533,7 @@ int main() {
 
     draw_method draw_with = draw_vulkan;
     if (draw_with == draw_vulkan) {
-        auto vk = make_vulkan(my_display, my_surface);
-        (void)vk;        
+        si::vk_renderer vk(my_display, my_surface);
     } else if (draw_with == draw_opengl) {
         EGLDisplay egl_display = my_display.egl();
         auto [egl_context, egl_config] = init_egl(egl_display);
