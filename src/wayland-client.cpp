@@ -533,7 +533,9 @@ int main() {
 
     draw_method draw_with = draw_vulkan;
     if (draw_with == draw_vulkan) {
-        si::vk_renderer vk(my_display, my_surface);
+        si::vk::root vk;
+        auto r = vk.make_renderer(my_display, my_surface);
+        //si::vk_renderer vk(my_display, my_surface);
     } else if (draw_with == draw_opengl) {
         EGLDisplay egl_display = my_display.egl();
         auto [egl_context, egl_config] = init_egl(egl_display);
