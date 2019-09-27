@@ -1,5 +1,5 @@
 #include <si/wl/shm.hpp>
-#include <fmt/format.h>
+#include <spdlog/spdlog.h>
 
 void wl::shm_deleter::operator()(wl_shm* shm) const {
     wl_shm_destroy(shm);
@@ -11,7 +11,7 @@ wl::shm::shm(wl_shm* shm) : hnd(shm) {
     wl_shm_add_listener(shm, &listener, this);
 }
 void wl::shm::dispatch_format(void* data, wl_shm* shm, std::uint32_t format) {
-    fmt::print("Format {} is valid\n", format);
+    spdlog::debug("Format {} is valid", format);
 }
 wl::shm::operator wl_shm*() const {
     return hnd.get();

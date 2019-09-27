@@ -1,5 +1,5 @@
 #include <si/egl.hpp>
-#include <fmt/format.h>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <vector>
 
@@ -29,80 +29,80 @@ void describe_egl_config(EGLDisplay dpy, EGLConfig cfg) {
     if (!eglGetConfigAttrib(dpy, cfg, EGL_ALPHA_SIZE, &val)) {
         egl_throw();
     }
-    fmt::print("   EGL_ALPHA_SIZE: {}\n", val);
+    spdlog::info("   EGL_ALPHA_SIZE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_ALPHA_MASK_SIZE, &val);
-    fmt::print("   EGL_ALPHA_MASK_SIZE: {}\n", val);
+    spdlog::info("   EGL_ALPHA_MASK_SIZE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_BIND_TO_TEXTURE_RGB, &val);
-    fmt::print("   EGL_BIND_TO_TEXTURE_RGB: {}\n", val);
+    spdlog::info("   EGL_BIND_TO_TEXTURE_RGB: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_BIND_TO_TEXTURE_RGBA, &val);
-    fmt::print("   EGL_BIND_TO_TEXTURE_RGBA: {}\n", val);
+    spdlog::info("   EGL_BIND_TO_TEXTURE_RGBA: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_BLUE_SIZE, &val);
-    fmt::print("   EGL_BLUE_SIZE: {}\n", val);
+    spdlog::info("   EGL_BLUE_SIZE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_BUFFER_SIZE, &val);
-    fmt::print("   EGL_BUFFER_SIZE: {}\n", val);
+    spdlog::info("   EGL_BUFFER_SIZE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_COLOR_BUFFER_TYPE, &val);
-    fmt::print("   EGL_COLOR_BUFFER_TYPE: {}\n", val);
+    spdlog::info("   EGL_COLOR_BUFFER_TYPE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_CONFIG_CAVEAT, &val);
-    fmt::print("   EGL_CONFIG_CAVEAT: {}\n", val);
+    spdlog::info("   EGL_CONFIG_CAVEAT: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_CONFIG_ID, &val);
-    fmt::print("   EGL_CONFIG_ID: {}\n", val);
+    spdlog::info("   EGL_CONFIG_ID: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_CONFORMANT, &val);
-    fmt::print("   EGL_CONFORMANT: {}\n", val);
+    spdlog::info("   EGL_CONFORMANT: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_DEPTH_SIZE, &val);
-    fmt::print("   EGL_DEPTH_SIZE: {}\n", val);
+    spdlog::info("   EGL_DEPTH_SIZE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_GREEN_SIZE, &val);
-    fmt::print("   EGL_GREEN_SIZE: {}\n", val);
+    spdlog::info("   EGL_GREEN_SIZE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_LEVEL, &val);
-    fmt::print("   EGL_LEVEL: {}\n", val);
+    spdlog::info("   EGL_LEVEL: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_LUMINANCE_SIZE, &val);
-    fmt::print("   EGL_LUMINANCE_SIZE: {}\n", val);
+    spdlog::info("   EGL_LUMINANCE_SIZE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_MAX_PBUFFER_WIDTH, &val);
-    fmt::print("   EGL_MAX_PBUFFER_WIDTH: {}\n", val);
+    spdlog::info("   EGL_MAX_PBUFFER_WIDTH: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_MAX_PBUFFER_HEIGHT, &val);
-    fmt::print("   EGL_MAX_PBUFFER_HEIGHT: {}\n", val);
+    spdlog::info("   EGL_MAX_PBUFFER_HEIGHT: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_MAX_PBUFFER_PIXELS, &val);
-    fmt::print("   EGL_MAX_PBUFFER_PIXELS: {}\n", val);
+    spdlog::info("   EGL_MAX_PBUFFER_PIXELS: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_MAX_SWAP_INTERVAL, &val);
-    fmt::print("   EGL_MAX_SWAP_INTERVAL: {}\n", val);
+    spdlog::info("   EGL_MAX_SWAP_INTERVAL: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_MIN_SWAP_INTERVAL, &val);
-    fmt::print("   EGL_MIN_SWAP_INTERVAL: {}\n", val);
+    spdlog::info("   EGL_MIN_SWAP_INTERVAL: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_NATIVE_RENDERABLE, &val);
-    fmt::print("   EGL_NATIVE_RENDERABLE: {}\n", val);
+    spdlog::info("   EGL_NATIVE_RENDERABLE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_NATIVE_VISUAL_ID, &val);
-    fmt::print("   EGL_NATIVE_VISUAL_ID: {}\n", val);
+    spdlog::info("   EGL_NATIVE_VISUAL_ID: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_NATIVE_VISUAL_TYPE, &val);
-    fmt::print("   EGL_NATIVE_VISUAL_TYPE: {}\n", val);
+    spdlog::info("   EGL_NATIVE_VISUAL_TYPE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_RED_SIZE, &val);
-    fmt::print("   EGL_RED_SIZE: {}\n", val);
+    spdlog::info("   EGL_RED_SIZE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_RENDERABLE_TYPE, &val);
-    fmt::print("   EGL_RENDERABLE_TYPE: {} | {} | {} | {}\n",
+    spdlog::info("   EGL_RENDERABLE_TYPE: {} | {} | {} | {}",
                val & EGL_OPENGL_BIT ? "EGL_OPENGL_BIT" : "",
                val & EGL_OPENGL_ES_BIT ? "EGL_OPENGL_ES_BIT " : "",
                val & EGL_OPENGL_ES2_BIT ? "EGL_OPENGL_ES2_BIT" : "",
                val & EGL_OPENVG_BIT ? "EGL_OPENVG_BIT" : "");
     eglGetConfigAttrib(dpy, cfg, EGL_SAMPLE_BUFFERS, &val);
-    fmt::print("   EGL_SAMPLE_BUFFERS: {}\n", val);
+    spdlog::info("   EGL_SAMPLE_BUFFERS: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_SAMPLES, &val);
-    fmt::print("   EGL_SAMPLES: {}\n", val);
+    spdlog::info("   EGL_SAMPLES: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_STENCIL_SIZE, &val);
-    fmt::print("   EGL_STENCIL_SIZE: {}\n", val);
+    spdlog::info("   EGL_STENCIL_SIZE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_SURFACE_TYPE, &val);
-    fmt::print("   EGL_SURFACE_TYPE: {}\n", val);
+    spdlog::info("   EGL_SURFACE_TYPE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_TRANSPARENT_TYPE, &val);
-    fmt::print("   EGL_TRANSPARENT_TYPE: {}\n", val);
+    spdlog::info("   EGL_TRANSPARENT_TYPE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_TRANSPARENT_RED_VALUE, &val);
-    fmt::print("   EGL_TRANSPARENT_RED_VALUE: {}\n", val);
+    spdlog::info("   EGL_TRANSPARENT_RED_VALUE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_TRANSPARENT_GREEN_VALUE, &val);
-    fmt::print("   EGL_TRANSPARENT_GREEN_VALUE: {}\n", val);
+    spdlog::info("   EGL_TRANSPARENT_GREEN_VALUE: {}", val);
     eglGetConfigAttrib(dpy, cfg, EGL_TRANSPARENT_BLUE_VALUE, &val);
-    fmt::print("   EGL_TRANSPARENT_BLUE_VALUE: {}\n", val);
+    spdlog::info("   EGL_TRANSPARENT_BLUE_VALUE: {}", val);
 }
 
 std::tuple<EGLContext, EGLConfig> init_egl(EGLDisplay dpy) {
     EGLint major;
     EGLint minor;
     if (eglInitialize(dpy, &major, &minor)) {
-        fmt::print("Initialized egl {}.{}\n", major, minor);
+        spdlog::info("Initialized egl {}.{}", major, minor);
     } else {
         egl_throw();
     }
@@ -111,7 +111,7 @@ std::tuple<EGLContext, EGLConfig> init_egl(EGLDisplay dpy) {
     if (!eglGetConfigs(dpy, nullptr, 0, &total_config_count)) {
         egl_throw();
     }
-    fmt::print("{} configs available\n", total_config_count);
+    spdlog::info("{} configs available", total_config_count);
 
     EGLint config_attribs[] = {
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
@@ -130,10 +130,10 @@ std::tuple<EGLContext, EGLConfig> init_egl(EGLDisplay dpy) {
     if (!eglChooseConfig(dpy, config_attribs, matching_configs.data(), matching_config_count, &matching_config_count)) {
         egl_throw();
     }
-    fmt::print("{} configs matching\n", matching_config_count);
+    spdlog::info("{} configs matching", matching_config_count);
 
     if (matching_config_count > 0) {
-        fmt::print("choosing first matching config\n");
+        spdlog::info("choosing first matching config");
         auto context_config = matching_configs[0];
         EGLint context_attribs[] = {
             EGL_CONTEXT_CLIENT_VERSION, 2,

@@ -105,6 +105,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
 }
 
 si::vk::renderer::~renderer() {
+    //TODO: should we reset the command buffer instead of waiting for it to finish?
     device.logical->waitForFences(*in_flight, true, std::numeric_limits<std::uint64_t>::max());
 }
 

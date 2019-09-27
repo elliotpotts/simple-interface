@@ -3,7 +3,7 @@
 #include <si/wl/shell.hpp>
 #include <si/wl/shm.hpp>
 #include <si/wl/seat.hpp>
-#include <fmt/format.h>
+#include <spdlog/spdlog.h>
 #include <string>
 
 using namespace std::string_literals;
@@ -40,13 +40,13 @@ void wl::registry::handler(void* data, wl_registry* reg_ptr, std::uint32_t id, c
             static_cast<wl_seat*> (wl_registry_bind(reg_ptr, id, &wl_seat_interface, version))
         );
     } else {
-        fmt::print("{:>3}: {}: no handler\n", id, iface);
+        spdlog::info("{:>3}: {}: no handler", id, iface);
         return;
     }
-    fmt::print("{:>3}: {}: bound successfully\n", id, iface);
+    spdlog::info("{:>3}: {}: bound successfully", id, iface);
 }
 void wl::registry::remover(void* data, wl_registry* registry, std::uint32_t id) {
-    fmt::print("Got a registry losing event for id {}\n", id);
+    spdlog::debug("Got a registry losing event for id {}", id);
 }
 wl::registry::operator wl_registry*() const {
     return hnd.get();

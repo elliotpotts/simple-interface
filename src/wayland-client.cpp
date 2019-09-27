@@ -67,7 +67,7 @@ int main() {
 
         /* Paint on the freshly created rendering context */
         if (eglMakeCurrent(egl_display, egl_window.surface(), egl_window.surface(), egl_context)) {
-            spdlog::info("egl made current.\n");
+            spdlog::info("egl made current.");
         } else {
             egl_throw();
         }
@@ -77,7 +77,7 @@ int main() {
             glClear(GL_COLOR_BUFFER_BIT);
             glFlush();          
             if (eglSwapBuffers(egl_display, egl_window.surface())) {
-                spdlog::info("egl buffer swapped\n");
+                spdlog::info("egl buffer swapped");
             } else {
                 egl_throw();
             }
@@ -94,10 +94,10 @@ int main() {
 
         my_surface.commit();
     } else {
-        spdlog::info("unknown draw method\n");
+        spdlog::info("unknown draw method");
     }
     while (my_display.dispatch() != -1) {
     }
-    spdlog::info("finished\n");
+    spdlog::info("finished");
     return 0;
 }

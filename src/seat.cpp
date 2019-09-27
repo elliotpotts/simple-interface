@@ -1,23 +1,23 @@
 #include <si/wl/seat.hpp>
 #include <si/wl/pointer.hpp>
-#include <fmt/format.h>
+#include <spdlog/spdlog.h>
 
 void si::wl::seat_deleter::operator()(wl_seat* seat_ptr) const {
     wl_seat_destroy(seat_ptr);
 }
 void si::wl::seat::capabilities(void* data, wl_seat* seat_ptr, std::uint32_t capabilities) {
     if (capabilities & WL_SEAT_CAPABILITY_POINTER) {
-        fmt::print("Incoming seat has pointer\n");
+        spdlog::info("Incoming seat has pointer");
     }
     if (capabilities & WL_SEAT_CAPABILITY_KEYBOARD) {
-        fmt::print("Incoming seat has keyboard\n");
+        spdlog::info("Incoming seat has keyboard");
     }
     if (capabilities & WL_SEAT_CAPABILITY_TOUCH) {
-        fmt::print("Incoming seat has touch\n");
+        spdlog::info("Incoming seat has touch");
     }
 }
 void si::wl::seat::name(void* data, wl_seat* seat, const char* name) {
-    fmt::print("Seat \"{}\" arrived.\n", name);
+    spdlog::info("Seat \"{}\" arrived.", name);
 }
 si::wl::pointer si::wl::seat::pointer() const {
     return si::wl::pointer(wl_seat_get_pointer(hnd.get()));
