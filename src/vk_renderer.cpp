@@ -7,11 +7,8 @@
 #include <si/util.hpp>
 
 namespace {
-    const int win_width = 480;
-    const int win_height = 360;
     const auto win_image_format = ::vk::Format::eB8G8R8A8Srgb;
     const auto win_color_space = ::vk::ColorSpaceKHR::eSrgbNonlinear;
-    const ::vk::Extent2D win_image_extent = {static_cast<std::uint32_t>(win_width), static_cast<std::uint32_t>(win_height)};
 }
 
 si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR old_surface):
@@ -20,6 +17,12 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
     image_available(device.logical->createSemaphoreUnique({})),
     render_finished(device.logical->createSemaphoreUnique({})),
     in_flight(device.logical->createFenceUnique({::vk::FenceCreateFlagBits::eSignaled})) {
+
+    static unsigned i = 1;
+    spdlog::debug("i = {}", i);
+    static std::uint32_t win_dim;
+    win_dim = i++ * 200;
+    
     ::vk::SurfaceCapabilitiesKHR caps = device.physical.getSurfaceCapabilitiesKHR(*surface);
     
     std::vector<::vk::SurfaceFormatKHR> formats = device.physical.getSurfaceFormatsKHR(*surface);
@@ -34,7 +37,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
         {},
         *surface,
         caps.minImageCount + 1,
-        win_image_format, win_color_space, win_image_extent,
+        win_image_format, win_color_space, {win_dim, win_dim},
         1,
         ::vk::ImageUsageFlagBits::eColorAttachment,
         ::vk::SharingMode::eExclusive,
@@ -72,7 +75,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
                 {},
                 *device.render_pass,
                 1, &*view_ptr,
-                win_width, win_height,
+                win_dim, win_dim,
                 1
             })
         );
@@ -84,6 +87,9 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
         static_cast<std::uint32_t>(framebuffers.size())
     });
     for (std::size_t i = 0; i < command_buffers.size(); i++) {
+        const ::vk::Viewport viewport (0.0f, 0.0f, static_cast<float>(win_dim), static_cast<float>(win_dim), 0.0f, 1.0f);
+        const ::vk::Rect2D scissor ({0, 0}, {static_cast<std::uint32_t>(win_dim), static_cast<std::uint32_t>(win_dim)});
+    
         ::vk::CommandBuffer& cmd = *command_buffers[i];
         cmd.begin(::vk::CommandBufferBeginInfo {});
         ::vk::ClearValue clear_color {::vk::ClearColorValue{std::array<float, 4>{0.0f, 0.0f, 0.0f, 0.0f}}};
@@ -91,13 +97,15 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
             {
                 *device.render_pass,
                 *framebuffers[i],
-                {{0, 0}, win_image_extent},
+                scissor,
                 1,
                 &clear_color
             },
             ::vk::SubpassContents::eInline
         );
         cmd.bindPipeline(::vk::PipelineBindPoint::eGraphics, *device.pipeline);
+        cmd.setViewport(0, viewport);
+        cmd.setScissor(0, scissor);
         cmd.draw(3, 1, 0, 0);
         cmd.endRenderPass();
         cmd.end();
@@ -174,9 +182,7 @@ si::vk::gfx_device::gfx_device(::vk::PhysicalDevice physical, ::vk::Queue graphi
     }
     const ::vk::PipelineVertexInputStateCreateInfo input_state ({}, 0, nullptr, 0, nullptr);
     const ::vk::PipelineInputAssemblyStateCreateInfo assembly_state ({}, ::vk::PrimitiveTopology::eTriangleList, false);
-    const ::vk::Viewport viewport (0.0f, 0.0f, static_cast<float>(win_width), static_cast<float>(win_height), 0.0f, 1.0f);
-    const ::vk::Rect2D scissor ({0, 0}, {static_cast<std::uint32_t>(win_width), static_cast<std::uint32_t>(win_height)});
-    const ::vk::PipelineViewportStateCreateInfo viewport_state ({}, 1, &viewport, 1, &scissor);
+    const ::vk::PipelineViewportStateCreateInfo viewport_state ({}, 1, nullptr, 1, nullptr);
     const ::vk::PipelineRasterizationStateCreateInfo rasterization_state (
         {}, false, false,
         ::vk::PolygonMode::eFill,
@@ -217,6 +223,8 @@ si::vk::gfx_device::gfx_device(::vk::PhysicalDevice physical, ::vk::Queue graphi
             1, &subpass,
             1, &subpass_dependency 
         });
+    const std::array dynamic_states = {::vk::DynamicState::eViewport, ::vk::DynamicState::eScissor};
+    const ::vk::PipelineDynamicStateCreateInfo dynamic_state {{}, dynamic_states.size(), dynamic_states.data() };
     pipeline = logical->createGraphicsPipelineUnique (
         nullptr,
         ::vk::GraphicsPipelineCreateInfo (
@@ -225,13 +233,13 @@ si::vk::gfx_device::gfx_device(::vk::PhysicalDevice physical, ::vk::Queue graphi
             stages.data(),
             &input_state,
             &assembly_state,
-            nullptr,
+            nullptr, //tesselation
             &viewport_state,
             &rasterization_state,
             &multisample_state,
-            nullptr,
+            nullptr, //depth
             &color_blend_state,
-            nullptr,
+            &dynamic_state,
             *pipeline_layout,
             *render_pass,
             0,
@@ -324,6 +332,8 @@ std::unique_ptr<si::vk::renderer> si::vk::root::make_renderer(::wl::display& dis
         return gfx_it->make_renderer(std::move(vk_surface));
     } else {
         for (::vk::PhysicalDevice& physical : instance->enumeratePhysicalDevices()) {
+            auto props = physical.getProperties();
+            spdlog::debug("Device max viewports: {} up to {}x{}", props.limits.maxViewports, props.limits.maxViewportDimensions[0], props.limits.maxViewportDimensions[1]);
             std::vector<::vk::ExtensionProperties> exts_avail = physical.enumerateDeviceExtensionProperties();
             //TODO: actually check if the required extensions are available
             if (true) {

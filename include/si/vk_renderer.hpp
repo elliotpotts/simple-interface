@@ -13,6 +13,8 @@ namespace si {
         struct renderer {
             gfx_device& device;
             ::vk::UniqueSurfaceKHR surface;
+            ::vk::SurfaceFormatKHR surface_format;
+            ::vk::PresentModeKHR present_mode;
             ::vk::UniqueSemaphore image_available;
             ::vk::UniqueSemaphore render_finished;
             ::vk::UniqueFence in_flight;

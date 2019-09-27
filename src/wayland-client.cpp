@@ -53,12 +53,17 @@ int main() {
     wl::shell_surface my_shell_surface = my_shell.make_surface(my_surface);
     my_shell_surface.set_toplevel();
 
+    wl::surface my_other_surface = my_compositor.make_surface();
+    wl::shell_surface my_other_shell_surface = my_shell.make_surface(my_other_surface);
+    my_other_shell_surface.set_toplevel();
+
     draw_method draw_with = draw_vulkan;
     if (draw_with == draw_vulkan) {
         si::vk::root vk;
-        auto r = vk.make_renderer(my_display, my_surface);
-        r->draw();
-        //si::vk_renderer vk(my_display, my_surface);
+        auto r1 = vk.make_renderer(my_display, my_surface);
+        auto r2 = vk.make_renderer(my_display, my_other_surface);
+        r1->draw();
+        r2->draw();
     } else if (draw_with == draw_opengl) {
         EGLDisplay egl_display = my_display.egl();
         auto [egl_context, egl_config] = init_egl(egl_display);
