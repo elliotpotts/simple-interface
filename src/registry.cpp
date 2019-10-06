@@ -3,6 +3,7 @@
 #include <si/wl/shell.hpp>
 #include <si/wl/shm.hpp>
 #include <si/wl/seat.hpp>
+#include <si/wlp/xdg_shell.hpp>
 #include <spdlog/spdlog.h>
 #include <string>
 
@@ -38,6 +39,11 @@ void wl::registry::handler(void* data, wl_registry* reg_ptr, std::uint32_t id, c
         reg.objects.emplace_front (
             std::in_place_type<si::wl::seat>,
             static_cast<wl_seat*> (wl_registry_bind(reg_ptr, id, &wl_seat_interface, version))
+        );
+    } else if (iface == "xdg_wm_base"s) {
+        reg.objects.emplace_front (
+            std::in_place_type<si::wlp::xdg_wm_base>,
+            static_cast<xdg_wm_base*> (wl_registry_bind(reg_ptr, id, &xdg_wm_base_interface, version))
         );
     } else {
         spdlog::info("{:>3}: {}: no handler", id, iface);

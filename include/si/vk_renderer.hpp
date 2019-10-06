@@ -6,6 +6,7 @@
 #include <si/wl/surface.hpp>
 #include <vector>
 #include <memory>
+#include <cstdint>
 
 namespace si {
     namespace vk {
@@ -24,9 +25,10 @@ namespace si {
             std::vector<::vk::UniqueFramebuffer> framebuffers;
             std::vector<::vk::UniqueCommandBuffer> command_buffers;
             
-            renderer(gfx_device& device, ::vk::UniqueSurfaceKHR surface);
+            renderer(gfx_device& device, ::vk::UniqueSurfaceKHR surface, std::uint32_t width, std::uint32_t height);
             ~renderer();
             void draw();
+            void resize(std::uint32_t width, std::uint32_t height);
         };
         struct gfx_device {
             ::vk::PhysicalDevice physical;
@@ -41,42 +43,17 @@ namespace si {
             ::vk::UniquePipeline pipeline;
 
             ::vk::UniqueCommandPool graphics_command_pool;
-
             gfx_device(::vk::PhysicalDevice physical, ::vk::Queue graphics_q, std::uint32_t, ::vk::Queue present_q, std::uint32_t, ::vk::UniqueDevice logical);
-            std::unique_ptr<renderer> make_renderer(::vk::UniqueSurfaceKHR);
+            std::unique_ptr<renderer> make_renderer(::vk::UniqueSurfaceKHR, std::uint32_t width, std::uint32_t height);
         };
         struct root {
             ::vk::UniqueInstance instance;
             VkDebugReportCallbackEXT debug_reporter;
             std::vector<gfx_device> gfxs;
             root();
-            std::unique_ptr<renderer> make_renderer(::wl::display&, ::wl::surface&);
+            std::unique_ptr<renderer> make_renderer(::wl::display&, ::wl::surface&, std::uint32_t width, std::uint32_t height);
         };
     }
-    /*
-    struct vk_iface {
-        vk::PhysicalDevice phy;
-        vk::Queue graphics_q;
-        vk::Queue present_q;
-        vk::UniqueDevice device;
-        vk::UniqueSwapchainKHR swapchain;
-    };
-
-    struct vk_pipeline {
-        vk::UniquePipelineLayout layout;
-        vk::UniqueRenderPass render_pass;
-        vk::UniquePipeline pipeline;
-    };
-
-    struct vk_renderer {
-        vk::UniqueInstance instance;
-        VkDebugReportCallbackEXT debug_callback;
-        vk::UniqueSurfaceKHR surface;
-        vk_iface iface;
-        std::vector<vk::UniqueImageView> image_views;
-        vk_pipeline pipeline;
-        vk_renderer(::wl::display&, ::wl::surface&);
-        };*/
 }
 
 #endif

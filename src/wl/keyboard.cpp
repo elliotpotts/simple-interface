@@ -10,8 +10,6 @@ void si::wl::keyboard::enter(void* data, wl_keyboard* keyboard, std::uint32_t se
 void si::wl::keyboard::leave(void* data, wl_keyboard* keyboard, std::uint32_t serial, wl_surface* surface) {
 }
 void si::wl::keyboard::key(void* data, wl_keyboard* keyboard, std::uint32_t serial, std::uint32_t time, std::uint32_t key, std::uint32_t state) {
-    fmt::print("Keypress - Goodbye!", key);
-    std::terminate();
 }
 void si::wl::keyboard::modifiers(void* data, wl_keyboard* keyboard, std::uint32_t serial, std::uint32_t mods_depressed, std::uint32_t mods_latched, std::uint32_t mods_locked, std::uint32_t group) {
 }

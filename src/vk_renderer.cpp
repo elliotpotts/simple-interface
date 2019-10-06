@@ -11,17 +11,12 @@ namespace {
     const auto win_color_space = ::vk::ColorSpaceKHR::eSrgbNonlinear;
 }
 
-si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR old_surface):
+si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR old_surface, std::uint32_t width, std::uint32_t height):
     device(device),
     surface(std::move(old_surface)),
     image_available(device.logical->createSemaphoreUnique({})),
     render_finished(device.logical->createSemaphoreUnique({})),
     in_flight(device.logical->createFenceUnique({::vk::FenceCreateFlagBits::eSignaled})) {
-
-    static unsigned i = 1;
-    spdlog::debug("i = {}", i);
-    static std::uint32_t win_dim;
-    win_dim = i++ * 200;
     
     ::vk::SurfaceCapabilitiesKHR caps = device.physical.getSurfaceCapabilitiesKHR(*surface);
     
@@ -37,7 +32,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
         {},
         *surface,
         caps.minImageCount + 1,
-        win_image_format, win_color_space, {win_dim, win_dim},
+        win_image_format, win_color_space, {width, height},
         1,
         ::vk::ImageUsageFlagBits::eColorAttachment,
         ::vk::SharingMode::eExclusive,
@@ -75,7 +70,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
                 {},
                 *device.render_pass,
                 1, &*view_ptr,
-                win_dim, win_dim,
+                width, height,
                 1
             })
         );
@@ -87,8 +82,8 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
         static_cast<std::uint32_t>(framebuffers.size())
     });
     for (std::size_t i = 0; i < command_buffers.size(); i++) {
-        const ::vk::Viewport viewport (0.0f, 0.0f, static_cast<float>(win_dim), static_cast<float>(win_dim), 0.0f, 1.0f);
-        const ::vk::Rect2D scissor ({0, 0}, {static_cast<std::uint32_t>(win_dim), static_cast<std::uint32_t>(win_dim)});
+        const ::vk::Viewport viewport (0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f);
+        const ::vk::Rect2D scissor ({0, 0}, {static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)});
     
         ::vk::CommandBuffer& cmd = *command_buffers[i];
         cmd.begin(::vk::CommandBufferBeginInfo {});
@@ -112,8 +107,102 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
     }
 }
 
+void si::vk::renderer::resize(std::uint32_t width, std::uint32_t height) {
+    device.logical->waitIdle();
+    ::vk::SurfaceCapabilitiesKHR caps = device.physical.getSurfaceCapabilitiesKHR(*surface);
+    
+    std::vector<::vk::SurfaceFormatKHR> formats = device.physical.getSurfaceFormatsKHR(*surface);
+    spdlog::info("Available formats:");
+    for (auto format : formats) { spdlog::info(" * {}/{}", to_string(format.format), to_string(format.colorSpace)); }
+    
+    std::vector<::vk::PresentModeKHR> modes = device.physical.getSurfacePresentModesKHR(*surface);
+    spdlog::info("Available modes:");
+    for (auto mode : modes) { spdlog::info(" * {}", to_string(mode)); }
+
+    swapchain = device.logical->createSwapchainKHRUnique ({
+        {},
+        *surface,
+        caps.minImageCount + 1,
+        win_image_format, win_color_space, {width, height},
+        1,
+        ::vk::ImageUsageFlagBits::eColorAttachment,
+        ::vk::SharingMode::eExclusive,
+        0,
+        nullptr,
+        caps.currentTransform,
+        ::vk::CompositeAlphaFlagBitsKHR::eOpaque,
+        ::vk::PresentModeKHR::eMailbox,
+        true,
+        nullptr
+    });
+
+    images = device.logical->getSwapchainImagesKHR(*swapchain);
+    image_views.clear();
+    image_views.reserve(images.size());
+    for (::vk::Image& img : images) {
+        image_views.push_back (
+            device.logical->createImageViewUnique({
+                {},
+                img,
+                ::vk::ImageViewType::e2D,
+                win_image_format,
+                {::vk::ComponentSwizzle::eIdentity, ::vk::ComponentSwizzle::eIdentity, ::vk::ComponentSwizzle::eIdentity, ::vk::ComponentSwizzle::eIdentity},
+                {::vk::ImageAspectFlagBits::eColor,
+                 0, 1,
+                 0, 1
+                }
+            })
+        );
+    }
+
+    framebuffers.clear();
+    framebuffers.reserve(image_views.size());
+    for (::vk::UniqueImageView& view_ptr : image_views) {
+        framebuffers.push_back (
+            device.logical->createFramebufferUnique(::vk::FramebufferCreateInfo {
+                {},
+                *device.render_pass,
+                1, &*view_ptr,
+                width, height,
+                1
+            })
+        );
+    }
+
+    command_buffers.clear();
+    command_buffers = device.logical->allocateCommandBuffersUnique({
+        *device.graphics_command_pool,
+        ::vk::CommandBufferLevel::ePrimary,
+        static_cast<std::uint32_t>(framebuffers.size())
+    });
+    for (std::size_t i = 0; i < command_buffers.size(); i++) {
+        const ::vk::Viewport viewport (0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f);
+        const ::vk::Rect2D scissor ({0, 0}, {static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)});
+    
+        ::vk::CommandBuffer& cmd = *command_buffers[i];
+        cmd.begin(::vk::CommandBufferBeginInfo {});
+        ::vk::ClearValue clear_color {::vk::ClearColorValue{std::array<float, 4>{0.0f, 0.0f, 0.0f, 0.0f}}};
+        cmd.beginRenderPass (
+            {
+                *device.render_pass,
+                *framebuffers[i],
+                scissor,
+                1,
+                &clear_color
+            },
+            ::vk::SubpassContents::eInline
+        );
+        cmd.bindPipeline(::vk::PipelineBindPoint::eGraphics, *device.pipeline);
+        cmd.setViewport(0, viewport);
+        cmd.setScissor(0, scissor);
+        cmd.draw(3, 1, 0, 0);
+        cmd.endRenderPass();
+        cmd.end();
+    }
+    spdlog::debug("Resize finished.");
+}
+
 si::vk::renderer::~renderer() {
-    //TODO: should we reset the command buffer instead of waiting for it to finish?
     device.logical->waitIdle();
 }
 
@@ -248,8 +337,8 @@ si::vk::gfx_device::gfx_device(::vk::PhysicalDevice physical, ::vk::Queue graphi
     graphics_command_pool = logical->createCommandPoolUnique({{}, graphics_q_family_ix});
 }
 
-std::unique_ptr<si::vk::renderer> si::vk::gfx_device::make_renderer(::vk::UniqueSurfaceKHR surface) {
-    return std::make_unique<si::vk::renderer>(*this, std::move(surface));
+std::unique_ptr<si::vk::renderer> si::vk::gfx_device::make_renderer(::vk::UniqueSurfaceKHR surface, std::uint32_t width, std::uint32_t height) {
+    return std::make_unique<si::vk::renderer>(*this, std::move(surface), width, height);
 }
 
 namespace {
@@ -320,7 +409,7 @@ namespace {
 }
 si::vk::root::root(): instance(make_instance()), debug_reporter(attach_debug_reporter(*instance)) {
 }
-std::unique_ptr<si::vk::renderer> si::vk::root::make_renderer(::wl::display& display, ::wl::surface& surface) {
+std::unique_ptr<si::vk::renderer> si::vk::root::make_renderer(::wl::display& display, ::wl::surface& surface, std::uint32_t width, std::uint32_t height) {
     // Optimistically make a vulkan surface
     ::vk::UniqueSurfaceKHR vk_surface = instance->createWaylandSurfaceKHRUnique ({
         {}, static_cast<wl_display*>(display), static_cast<wl_surface*>(surface)
@@ -329,7 +418,7 @@ std::unique_ptr<si::vk::renderer> si::vk::root::make_renderer(::wl::display& dis
         return gfx.physical.getSurfaceSupportKHR(gfx.present_q_family_ix, *vk_surface);
     });
     if (gfx_it != gfxs.end()) {
-        return gfx_it->make_renderer(std::move(vk_surface));
+        return gfx_it->make_renderer(std::move(vk_surface), width, height);
     } else {
         for (::vk::PhysicalDevice& physical : instance->enumeratePhysicalDevices()) {
             auto props = physical.getProperties();
@@ -368,7 +457,7 @@ std::unique_ptr<si::vk::renderer> si::vk::root::make_renderer(::wl::display& dis
                     ::vk::Queue graphics_q = logical->getQueue(*graphics_q_ix, 0);
                     ::vk::Queue present_q = logical->getQueue(*present_q_ix, 0);
                     gfx_device& created = gfxs.emplace_back(physical, graphics_q, *graphics_q_ix, present_q, *present_q_ix, std::move(logical));
-                    return created.make_renderer(std::move(vk_surface));
+                    return created.make_renderer(std::move(vk_surface), width, height);
                 }
             }
         }
