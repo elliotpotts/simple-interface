@@ -79,12 +79,13 @@ int main() {
                                                     spdlog::debug("Resizing to {}x{}", new_width, new_height);
                                                     my_xdg_surface.ack_configure(serial);
                                                     r->resize(new_width, new_height);
+                                                    my_xdg_surface.set_window_geometry(0, 0, new_width, new_height);
                                                     spdlog::debug("Committing...");
                                                     my_surface.commit();
                                                 }
                                             });
-        r->draw();
         while (my_display.dispatch() != -1) {
+            r->draw();
         }
     } else if (draw_with == draw_opengl) {
         EGLDisplay egl_display = my_display.egl();
