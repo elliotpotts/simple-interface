@@ -5,11 +5,20 @@
 #include <si/wl/display.hpp>
 #include <si/wl/surface.hpp>
 #include <vector>
+#include <array>
 #include <memory>
 #include <cstdint>
+#include <glm/glm.hpp>
 
 namespace si {
     namespace vk {
+        struct vertex {
+            glm::vec2 pos;
+            glm::vec3 color;
+            static ::vk::VertexInputBindingDescription binding_description;
+            static std::array<::vk::VertexInputAttributeDescription, 2> input_descriptions;
+        };
+
         struct gfx_device;
         struct renderer {
             gfx_device& device;
@@ -25,22 +34,25 @@ namespace si {
             ::vk::UniquePipelineLayout pipeline_layout;
             ::vk::UniqueRenderPass render_pass;
             ::vk::UniquePipeline pipeline;
-
             ::vk::UniqueCommandPool graphics_command_pool;
-
+            ::vk::UniqueBuffer vertex_buffer;
+            ::vk::UniqueDeviceMemory vertex_buffer_memory;
             ::vk::UniqueSwapchainKHR swapchain;
-
             std::vector<::vk::Image> images;
             std::vector<::vk::UniqueImageView> image_views;
-
             std::vector<::vk::UniqueFramebuffer> framebuffers;
-
             std::vector<::vk::UniqueCommandBuffer> command_buffers;
+            const std::vector<vertex> vertices = {
+                {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+                {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+                {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+            };
 
             void create_pipeline();
             void create_swapchain(std::uint32_t width, std::uint32_t height);
             void create_images();
             void create_framebuffers(std::uint32_t width, std::uint32_t height);
+            void create_vertex_buffer();
             void create_command_buffers(std::uint32_t width, std::uint32_t height);
 
             renderer(gfx_device& device, ::vk::UniqueSurfaceKHR surface, std::uint32_t width, std::uint32_t height);

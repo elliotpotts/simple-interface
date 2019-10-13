@@ -20,6 +20,16 @@ namespace {
     }
 }
 
+::vk::VertexInputBindingDescription si::vk::vertex::binding_description = {
+    .binding = 0,
+    .stride = sizeof(vertex),
+    .inputRate = ::vk::VertexInputRate::eVertex
+};
+std::array<::vk::VertexInputAttributeDescription, 2> si::vk::vertex::input_descriptions = {
+    ::vk::VertexInputAttributeDescription {0, 0, ::vk::Format::eR32G32Sfloat, offsetof(vertex, pos) },
+    ::vk::VertexInputAttributeDescription {1, 0, ::vk::Format::eR32G32B32Sfloat, offsetof(vertex, color) }
+};
+
 void si::vk::renderer::create_pipeline() {
     pipeline_layout = device.logical->createPipelineLayoutUnique({
         {},
@@ -38,7 +48,11 @@ void si::vk::renderer::create_pipeline() {
             "main"
         );
     }
-    const ::vk::PipelineVertexInputStateCreateInfo input_state ({}, 0, nullptr, 0, nullptr);
+    const ::vk::PipelineVertexInputStateCreateInfo input_state (
+        {},
+        1, &vk::vertex::binding_description,
+        vk::vertex::input_descriptions.size(), vk::vertex::input_descriptions.data()
+    );
     const ::vk::PipelineInputAssemblyStateCreateInfo assembly_state ({}, ::vk::PrimitiveTopology::eTriangleList, false);
     const ::vk::PipelineViewportStateCreateInfo viewport_state ({}, 1, nullptr, 1, nullptr);
     const ::vk::PipelineRasterizationStateCreateInfo rasterization_state (
@@ -151,6 +165,37 @@ void si::vk::renderer::create_images() {
         );
     }
 }
+void si::vk::renderer::create_vertex_buffer() {
+    ::vk::DeviceSize vertex_buffer_size = sizeof(decltype(vertices)::value_type) * vertices.size();
+    vertex_buffer = device.logical->createBufferUnique(::vk::BufferCreateInfo {
+        {},
+        vertex_buffer_size,
+        ::vk::BufferUsageFlagBits::eVertexBuffer,
+        ::vk::SharingMode::eExclusive
+    });
+    ::vk::MemoryRequirements mem_req = device.logical->getBufferMemoryRequirements(*vertex_buffer);
+    ::vk::PhysicalDeviceMemoryProperties mem_props = device.physical.getMemoryProperties();
+    std::uint32_t req_type_mask = mem_req.memoryTypeBits;
+    ::vk::MemoryPropertyFlags req_properties = ::vk::MemoryPropertyFlagBits::eHostVisible | ::vk::MemoryPropertyFlagBits::eHostCoherent;
+    for (std::uint32_t i = 0; i < mem_props.memoryTypeCount; i++) {
+        if (req_type_mask & (i << 1) && (mem_props.memoryTypes[i].propertyFlags & req_properties) == req_properties) {
+            vertex_buffer_memory = device.logical->allocateMemoryUnique (
+                ::vk::MemoryAllocateInfo { mem_req.size, i},
+                nullptr
+            );
+            device.logical->bindBufferMemory(*vertex_buffer, *vertex_buffer_memory, 0);
+            void* data = device.logical->mapMemory(*vertex_buffer_memory, {0}, vertex_buffer_size);
+            std::copy (
+                reinterpret_cast<const char*>(vertices.data()),
+                reinterpret_cast<const char*>(vertices.data() + vertex_buffer_size),
+                reinterpret_cast<char*>(data)
+            );
+            device.logical->unmapMemory(*vertex_buffer_memory);
+            return;
+        }
+    }
+    throw std::runtime_error("Couldn't allocate suitable memory for vertex buffer");
+}
 void si::vk::renderer::create_framebuffers(std::uint32_t width, std::uint32_t height) {
     framebuffers.reserve(image_views.size());
     for (::vk::UniqueImageView& view_ptr : image_views) {
@@ -191,7 +236,10 @@ void si::vk::renderer::create_command_buffers(std::uint32_t width, std::uint32_t
         cmd.bindPipeline(::vk::PipelineBindPoint::eGraphics, *pipeline);
         cmd.setViewport(0, viewport);
         cmd.setScissor(0, scissor);
-        cmd.draw(3, 1, 0, 0);
+        std::array<::vk::Buffer, 1> buffers = { *vertex_buffer };
+        std::array<::vk::DeviceSize, 1> offsets = { 0 };
+        cmd.bindVertexBuffers(0, 1, buffers.data(), offsets.data());
+        cmd.draw(vertices.size(), 1, 0, 0);
         cmd.endRenderPass();
         cmd.end();
     }
@@ -207,6 +255,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
     create_swapchain(width, height);
     create_images();
     create_framebuffers(width, height);
+    create_vertex_buffer();
     create_command_buffers(width, height);
 }
 
