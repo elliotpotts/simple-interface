@@ -177,24 +177,29 @@ void si::vk::renderer::create_vertex_buffer() {
     ::vk::PhysicalDeviceMemoryProperties mem_props = device.physical.getMemoryProperties();
     std::uint32_t req_type_mask = mem_req.memoryTypeBits;
     ::vk::MemoryPropertyFlags req_properties = ::vk::MemoryPropertyFlagBits::eHostVisible | ::vk::MemoryPropertyFlagBits::eHostCoherent;
+    
+    std::optional<std::uint32_t> memory_type;
     for (std::uint32_t i = 0; i < mem_props.memoryTypeCount; i++) {
         if (req_type_mask & (i << 1) && (mem_props.memoryTypes[i].propertyFlags & req_properties) == req_properties) {
-            vertex_buffer_memory = device.logical->allocateMemoryUnique (
-                ::vk::MemoryAllocateInfo { mem_req.size, i},
-                nullptr
-            );
-            device.logical->bindBufferMemory(*vertex_buffer, *vertex_buffer_memory, 0);
-            void* data = device.logical->mapMemory(*vertex_buffer_memory, {0}, vertex_buffer_size);
-            std::copy (
-                reinterpret_cast<const char*>(vertices.data()),
-                reinterpret_cast<const char*>(vertices.data() + vertex_buffer_size),
-                reinterpret_cast<char*>(data)
-            );
-            device.logical->unmapMemory(*vertex_buffer_memory);
-            return;
+            memory_type = i;
+            break;
         }
     }
-    throw std::runtime_error("Couldn't allocate suitable memory for vertex buffer");
+    if (!memory_type) {
+        throw std::runtime_error("Couldn't allocate suitable memory for vertex buffer");
+    }
+    vertex_buffer_memory = device.logical->allocateMemoryUnique (
+        ::vk::MemoryAllocateInfo { mem_req.size, *memory_type},
+        nullptr
+    );
+    device.logical->bindBufferMemory(*vertex_buffer, *vertex_buffer_memory, 0);
+    void* data = device.logical->mapMemory(*vertex_buffer_memory, {0}, vertex_buffer_size);
+    std::copy (
+        reinterpret_cast<const char*>(vertices.data()),
+        reinterpret_cast<const char*>(vertices.data() + vertex_buffer_size),
+        reinterpret_cast<char*>(data)
+    );
+    device.logical->unmapMemory(*vertex_buffer_memory);
 }
 void si::vk::renderer::create_framebuffers(std::uint32_t width, std::uint32_t height) {
     framebuffers.reserve(image_views.size());
