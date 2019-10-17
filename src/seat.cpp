@@ -25,6 +25,8 @@ si::wl::pointer si::wl::seat::pointer() const {
 si::wl::keyboard si::wl::seat::keyboard() const {
     return si::wl::keyboard(wl_seat_get_keyboard(hnd.get()));
 }
-si::wl::seat::seat(wl_seat* seat) : hnd(seat) {
+si::wl::seat::seat(::wl_registry* reg_ptr, std::uint32_t id, std::uint32_t version):
+    hnd(static_cast<wl_seat*>(wl_registry_bind(reg_ptr, id, &wl_seat_interface, version)))
+    {
     wl_seat_add_listener(hnd.get(), &seat_listener, this);
 }

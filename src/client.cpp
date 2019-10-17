@@ -11,7 +11,6 @@ using namespace std::literals::string_literals;
 #include <si/wl/display.hpp>
 #include <si/wl/registry.hpp>
 #include <si/wl/compositor.hpp>
-#include <si/wl/shell.hpp>
 #include <si/wl/shm.hpp>
 #include <si/wl/seat.hpp>
 #include <si/wlp/xdg_shell.hpp>
@@ -44,11 +43,11 @@ int main() {
     //my_display.dispatch(); // TODO: Figure out when I need to dispatch/roundtrip
     my_display.roundtrip();
 
-    auto& my_compositor = my_registry.get<wl::compositor>();
-    auto& my_seat = my_registry.get<si::wl::seat>();
+    auto my_compositor = my_registry.make<wl::compositor>();
+    auto my_seat = my_registry.make<si::wl::seat>("wl_seat");
     auto my_ptr = my_seat.pointer();
     auto my_keyboard = my_seat.keyboard();
-    auto& my_wm_base = my_registry.get<si::wlp::xdg_wm_base>();
+    auto my_wm_base = my_registry.make<si::wlp::xdg_wm_base>("xdg_wm_base");
     my_wm_base.on_ping.connect([&](std::uint32_t serial) {
                                    my_wm_base.pong(serial);
                                });
@@ -111,7 +110,7 @@ int main() {
             }
         }
     } else if (draw_with == draw_shm) {
-        auto& my_shm = my_registry.get<wl::shm>();
+        auto my_shm = my_registry.make<wl::shm>("wl_shm");
         shm_buffer my_buffer {my_shm, win_width, win_height};
         my_surface.attach(my_buffer.buffer, 0, 0);
 

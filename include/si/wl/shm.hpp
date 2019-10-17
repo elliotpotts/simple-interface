@@ -14,7 +14,7 @@ namespace wl {
         static void dispatch_format(void* data, wl_shm* shm, std::uint32_t format);
         wl_shm_listener listener { dispatch_format };
     public:
-        explicit shm(wl_shm*);
+        explicit shm(::wl_registry* reg_ptr, std::uint32_t id, std::uint32_t version);
         explicit operator wl_shm*() const;
         shm_pool make_pool(std::int32_t fd, std::int32_t size);
     };

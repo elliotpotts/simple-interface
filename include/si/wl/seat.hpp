@@ -16,7 +16,7 @@ namespace si::wl {
         static void name(void* data, wl_seat* seat, const char* name);
         const wl_seat_listener seat_listener { capabilities, name };
     public:
-        explicit seat(wl_seat*);
+        explicit seat(::wl_registry* reg_ptr, std::uint32_t id, std::uint32_t version);
         explicit operator const wl_seat*() const;
         si::wl::pointer pointer() const;
         si::wl::keyboard keyboard() const;

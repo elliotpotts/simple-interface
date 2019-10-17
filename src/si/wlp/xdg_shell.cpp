@@ -7,7 +7,9 @@ void si::wlp::xdg_wm_base::handle_ping(void* data, ::xdg_wm_base*, std::uint32_t
     xdg_wm_base& wrapper = *reinterpret_cast<xdg_wm_base*>(data);
     wrapper.on_ping(serial);
 }
-si::wlp::xdg_wm_base::xdg_wm_base(::xdg_wm_base* ptr): hnd(ptr) {
+si::wlp::xdg_wm_base::xdg_wm_base(::wl_registry* reg_ptr, std::uint32_t id, std::uint32_t version):
+    hnd(static_cast<::xdg_wm_base*>(wl_registry_bind(reg_ptr, id, &xdg_wm_base_interface, version)))
+    {
     ::xdg_wm_base_add_listener(hnd.get(), &event_listener, this);
 }
 si::wlp::xdg_positioner si::wlp::xdg_wm_base::create_positioner() {

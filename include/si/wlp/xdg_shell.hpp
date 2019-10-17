@@ -23,7 +23,7 @@ namespace si::wlp {
         static void handle_ping(void* data, ::xdg_wm_base*, std::uint32_t serial);
         ::xdg_wm_base_listener event_listener = { handle_ping };
     public:
-        explicit xdg_wm_base(::xdg_wm_base*);
+        explicit xdg_wm_base(::wl_registry*, std::uint32_t, std::uint32_t);
         boost::signals2::signal<void(std::uint32_t)> on_ping;
         xdg_positioner create_positioner();
         xdg_surface get_xdg_surface(wl_surface* surface);
