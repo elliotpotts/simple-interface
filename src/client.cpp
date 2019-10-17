@@ -75,11 +75,8 @@ int main() {
         auto r = vk.make_renderer(my_display, my_surface, 230, 230);
         my_xdg_surface.on_configure.connect([&](std::uint32_t serial) {
                                                 if (new_width != 0 && new_height != 0) {
-                                                    spdlog::debug("Resizing to {}x{}", new_width, new_height);
-                                                    my_xdg_surface.ack_configure(serial);
                                                     r->resize(new_width, new_height);
-                                                    my_xdg_surface.set_window_geometry(0, 0, new_width, new_height);
-                                                    spdlog::debug("Committing...");
+                                                    my_xdg_surface.ack_configure(serial);
                                                     my_surface.commit();
                                                 }
                                             });

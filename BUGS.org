@@ -1,3 +1,4 @@
-* TODO xdg-surface forgets resizing
+* DONE xdg-surface forgets resizing
+  CLOSED: [2019-10-17 Thu 23:42]
   To reproduce, resize an xdg-surface, move it, move focus off it.
   When focus is moved off, a configure event is sent with the original WxH thus undoing user resizing.
