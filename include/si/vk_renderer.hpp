@@ -35,6 +35,8 @@ namespace si {
             ::vk::UniqueRenderPass render_pass;
             ::vk::UniquePipeline pipeline;
             ::vk::UniqueCommandPool graphics_command_pool;
+            ::vk::UniqueBuffer staging_buffer;
+            ::vk::UniqueDeviceMemory staging_buffer_memory;
             ::vk::UniqueBuffer vertex_buffer;
             ::vk::UniqueDeviceMemory vertex_buffer_memory;
             ::vk::UniqueSwapchainKHR swapchain;
@@ -52,8 +54,11 @@ namespace si {
             void create_swapchain(std::uint32_t width, std::uint32_t height);
             void create_images();
             void create_framebuffers(std::uint32_t width, std::uint32_t height);
+            void create_staging_buffer();
             void create_vertex_buffer();
             void create_command_buffers(std::uint32_t width, std::uint32_t height);
+
+            void commit_vertex_buffer();
 
             renderer(gfx_device& device, ::vk::UniqueSurfaceKHR surface, std::uint32_t width, std::uint32_t height);
             ~renderer();
@@ -70,6 +75,7 @@ namespace si {
 
             gfx_device(::vk::PhysicalDevice physical, ::vk::Queue graphics_q, std::uint32_t graphics_q_ix, ::vk::Queue present_q, std::uint32_t present_q_ix, ::vk::UniqueDevice logical);
             std::unique_ptr<renderer> make_renderer(::vk::UniqueSurfaceKHR, std::uint32_t width, std::uint32_t height);
+            std::tuple<::vk::UniqueBuffer, ::vk::UniqueDeviceMemory> make_buffer(::vk::DeviceSize buffer_size, ::vk::BufferUsageFlags buffer_usage, ::vk::SharingMode sharing_mode, ::vk::MemoryPropertyFlags memory_flags);
         };
         struct root {
             ::vk::UniqueInstance instance;

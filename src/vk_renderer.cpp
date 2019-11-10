@@ -165,18 +165,22 @@ void si::vk::renderer::create_images() {
         );
     }
 }
-void si::vk::renderer::create_vertex_buffer() {
-    ::vk::DeviceSize vertex_buffer_size = sizeof(decltype(vertices)::value_type) * vertices.size();
-    vertex_buffer = device.logical->createBufferUnique(::vk::BufferCreateInfo {
+std::tuple<::vk::UniqueBuffer, ::vk::UniqueDeviceMemory> si::vk::gfx_device::make_buffer (
+    ::vk::DeviceSize buffer_size,
+    ::vk::BufferUsageFlags buffer_usage,
+    ::vk::SharingMode sharing_mode,
+    ::vk::MemoryPropertyFlags memory_flags
+) {
+    ::vk::UniqueBuffer buffer = logical->createBufferUnique(::vk::BufferCreateInfo {
         {},
-        vertex_buffer_size,
-        ::vk::BufferUsageFlagBits::eVertexBuffer,
-        ::vk::SharingMode::eExclusive
+        buffer_size,
+        buffer_usage,
+        sharing_mode
     });
-    ::vk::MemoryRequirements mem_req = device.logical->getBufferMemoryRequirements(*vertex_buffer);
-    ::vk::PhysicalDeviceMemoryProperties mem_props = device.physical.getMemoryProperties();
+    ::vk::MemoryRequirements mem_req = logical->getBufferMemoryRequirements(*buffer);
+    ::vk::PhysicalDeviceMemoryProperties mem_props = physical.getMemoryProperties();
     std::uint32_t req_type_mask = mem_req.memoryTypeBits;
-    ::vk::MemoryPropertyFlags req_properties = ::vk::MemoryPropertyFlagBits::eHostVisible | ::vk::MemoryPropertyFlagBits::eHostCoherent;
+    ::vk::MemoryPropertyFlags req_properties = memory_flags;
     
     std::optional<std::uint32_t> memory_type;
     for (std::uint32_t i = 0; i < mem_props.memoryTypeCount; i++) {
@@ -186,20 +190,36 @@ void si::vk::renderer::create_vertex_buffer() {
         }
     }
     if (!memory_type) {
-        throw std::runtime_error("Couldn't allocate suitable memory for vertex buffer");
+        throw std::runtime_error("Can't find suitable memory type for buffer memory allocation");
     }
-    vertex_buffer_memory = device.logical->allocateMemoryUnique (
-        ::vk::MemoryAllocateInfo { mem_req.size, *memory_type},
+    ::vk::UniqueDeviceMemory buffer_memory = logical->allocateMemoryUnique (
+        ::vk::MemoryAllocateInfo { mem_req.size, *memory_type },
         nullptr
     );
-    device.logical->bindBufferMemory(*vertex_buffer, *vertex_buffer_memory, 0);
-    void* data = device.logical->mapMemory(*vertex_buffer_memory, {0}, vertex_buffer_size);
-    std::copy (
-        reinterpret_cast<const char*>(vertices.data()),
-        reinterpret_cast<const char*>(vertices.data() + vertex_buffer_size),
-        reinterpret_cast<char*>(data)
+    logical->bindBufferMemory(*buffer, *buffer_memory, 0);
+    return std::make_tuple(std::move(buffer), std::move(buffer_memory));
+}
+
+void si::vk::renderer::create_staging_buffer() {
+    std::size_t size = sizeof(decltype(vertices)::value_type) * vertices.size();
+    std::tie(staging_buffer, staging_buffer_memory) = device.make_buffer (
+        size,
+        ::vk::BufferUsageFlagBits::eTransferSrc,
+        ::vk::SharingMode::eExclusive,
+        ::vk::MemoryPropertyFlagBits::eHostVisible | ::vk::MemoryPropertyFlagBits::eHostCoherent
     );
-    device.logical->unmapMemory(*vertex_buffer_memory);
+    void* data = device.logical->mapMemory(*staging_buffer_memory, 0, size);
+    std::copy(vertices.cbegin(), vertices.cend(), reinterpret_cast<vertex*>(data));
+    device.logical->unmapMemory(*staging_buffer_memory);
+}
+void si::vk::renderer::create_vertex_buffer() {
+    std::size_t size = sizeof(decltype(vertices)::value_type) * vertices.size();
+    std::tie(vertex_buffer, vertex_buffer_memory) = device.make_buffer (
+        size,
+        ::vk::BufferUsageFlagBits::eVertexBuffer | ::vk::BufferUsageFlagBits::eTransferDst,
+        ::vk::SharingMode::eExclusive,
+        ::vk::MemoryPropertyFlagBits::eDeviceLocal
+    );
 }
 void si::vk::renderer::create_framebuffers(std::uint32_t width, std::uint32_t height) {
     framebuffers.reserve(image_views.size());
@@ -249,6 +269,27 @@ void si::vk::renderer::create_command_buffers(std::uint32_t width, std::uint32_t
         cmd.end();
     }
 }
+void si::vk::renderer::commit_vertex_buffer() {
+    std::vector<::vk::UniqueCommandBuffer> cmds = device.logical->allocateCommandBuffersUnique({
+        *graphics_command_pool,
+        ::vk::CommandBufferLevel::ePrimary,
+        1
+    });
+    ::vk::CommandBuffer& cmd = *cmds.front();
+    cmd.begin(::vk::CommandBufferBeginInfo {});
+    cmd.copyBuffer(*staging_buffer, *vertex_buffer, std::array {::vk::BufferCopy {0, 0, sizeof(decltype(vertices)::value_type) * vertices.size()}});
+    cmd.end();
+    device.graphics_q.submit (
+        ::vk::SubmitInfo {
+            0, nullptr,
+            nullptr,
+            1, &cmd,
+            0, nullptr
+        },
+        nullptr
+    );
+    device.graphics_q.waitIdle();
+}
 si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR old_surface, std::uint32_t width, std::uint32_t height):
     device(device),
     image_available(device.logical->createSemaphoreUnique({})),
@@ -260,7 +301,9 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
     create_swapchain(width, height);
     create_images();
     create_framebuffers(width, height);
+    create_staging_buffer();
     create_vertex_buffer();
+    commit_vertex_buffer();
     create_command_buffers(width, height);
 }
 
