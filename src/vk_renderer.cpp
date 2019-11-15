@@ -93,7 +93,7 @@ void si::vk::renderer::create_pipeline() {
             {},
             1, &colour_attachment,
             1, &subpass,
-            1, &subpass_dependency 
+            1, &subpass_dependency
         });
     const std::array dynamic_states = {::vk::DynamicState::eViewport, ::vk::DynamicState::eScissor};
     const ::vk::PipelineDynamicStateCreateInfo dynamic_state {{}, dynamic_states.size(), dynamic_states.data() };
@@ -120,11 +120,11 @@ void si::vk::renderer::create_pipeline() {
 }
 void si::vk::renderer::create_swapchain(std::uint32_t width, std::uint32_t height) {
     ::vk::SurfaceCapabilitiesKHR caps = device.physical.getSurfaceCapabilitiesKHR(*surface);
-    
+
     std::vector<::vk::SurfaceFormatKHR> formats = device.physical.getSurfaceFormatsKHR(*surface);
     spdlog::info("Available formats:");
     for (auto format : formats) { spdlog::info(" * {}/{}", to_string(format.format), to_string(format.colorSpace)); }
-    
+
     std::vector<::vk::PresentModeKHR> modes = device.physical.getSurfacePresentModesKHR(*surface);
     spdlog::info("Available modes:");
     for (auto mode : modes) { spdlog::info(" * {}", to_string(mode)); }
@@ -181,7 +181,7 @@ std::tuple<::vk::UniqueBuffer, ::vk::UniqueDeviceMemory> si::vk::gfx_device::mak
     ::vk::PhysicalDeviceMemoryProperties mem_props = physical.getMemoryProperties();
     std::uint32_t req_type_mask = mem_req.memoryTypeBits;
     ::vk::MemoryPropertyFlags req_properties = memory_flags;
-    
+
     std::optional<std::uint32_t> memory_type;
     for (std::uint32_t i = 0; i < mem_props.memoryTypeCount; i++) {
         if (req_type_mask & (i << 1) && (mem_props.memoryTypes[i].propertyFlags & req_properties) == req_properties) {
@@ -199,27 +199,25 @@ std::tuple<::vk::UniqueBuffer, ::vk::UniqueDeviceMemory> si::vk::gfx_device::mak
     logical->bindBufferMemory(*buffer, *buffer_memory, 0);
     return std::make_tuple(std::move(buffer), std::move(buffer_memory));
 }
-
-void si::vk::renderer::create_staging_buffer() {
-    std::size_t size = sizeof(decltype(vertices)::value_type) * vertices.size();
-    std::tie(staging_buffer, staging_buffer_memory) = device.make_buffer (
-        size,
-        ::vk::BufferUsageFlagBits::eTransferSrc,
-        ::vk::SharingMode::eExclusive,
-        ::vk::MemoryPropertyFlagBits::eHostVisible | ::vk::MemoryPropertyFlagBits::eHostCoherent
-    );
-    void* data = device.logical->mapMemory(*staging_buffer_memory, 0, size);
-    std::copy(vertices.cbegin(), vertices.cend(), reinterpret_cast<vertex*>(data));
-    device.logical->unmapMemory(*staging_buffer_memory);
-}
 void si::vk::renderer::create_vertex_buffer() {
-    std::size_t size = sizeof(decltype(vertices)::value_type) * vertices.size();
+    auto [staging_buffer, staging_buffer_memory, size] = stage(vertices.begin(), vertices.end());
     std::tie(vertex_buffer, vertex_buffer_memory) = device.make_buffer (
         size,
         ::vk::BufferUsageFlagBits::eVertexBuffer | ::vk::BufferUsageFlagBits::eTransferDst,
         ::vk::SharingMode::eExclusive,
         ::vk::MemoryPropertyFlagBits::eDeviceLocal
     );
+    buffer_copy(*staging_buffer, *vertex_buffer, {0, 0, size});
+}
+void si::vk::renderer::create_index_buffer() {
+    auto [staging_buffer, staging_buffer_memory, size] = stage(indices.begin(), indices.end());
+    std::tie(index_buffer, index_buffer_memory) = device.make_buffer (
+        size,
+        ::vk::BufferUsageFlagBits::eIndexBuffer | ::vk::BufferUsageFlagBits::eTransferDst,
+        ::vk::SharingMode::eExclusive,
+        ::vk::MemoryPropertyFlagBits::eDeviceLocal
+    );
+    buffer_copy(*staging_buffer, *index_buffer, {0, 0, size});
 }
 void si::vk::renderer::create_framebuffers(std::uint32_t width, std::uint32_t height) {
     framebuffers.reserve(image_views.size());
@@ -244,7 +242,7 @@ void si::vk::renderer::create_command_buffers(std::uint32_t width, std::uint32_t
     for (std::size_t i = 0; i < command_buffers.size(); i++) {
         const ::vk::Viewport viewport (0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f);
         const ::vk::Rect2D scissor ({0, 0}, {width, height});
-    
+
         ::vk::CommandBuffer& cmd = *command_buffers[i];
         cmd.begin(::vk::CommandBufferBeginInfo {});
         ::vk::ClearValue clear_color {::vk::ClearColorValue{std::array<float, 4>{0.0f, 0.0f, 0.0f, 0.0f}}};
@@ -269,7 +267,7 @@ void si::vk::renderer::create_command_buffers(std::uint32_t width, std::uint32_t
         cmd.end();
     }
 }
-void si::vk::renderer::commit_vertex_buffer() {
+void si::vk::renderer::buffer_copy(::vk::Buffer src, ::vk::Buffer dst, ::vk::BufferCopy what) {
     std::vector<::vk::UniqueCommandBuffer> cmds = device.logical->allocateCommandBuffersUnique({
         *graphics_command_pool,
         ::vk::CommandBufferLevel::ePrimary,
@@ -277,7 +275,7 @@ void si::vk::renderer::commit_vertex_buffer() {
     });
     ::vk::CommandBuffer& cmd = *cmds.front();
     cmd.begin(::vk::CommandBufferBeginInfo {});
-    cmd.copyBuffer(*staging_buffer, *vertex_buffer, std::array {::vk::BufferCopy {0, 0, sizeof(decltype(vertices)::value_type) * vertices.size()}});
+    cmd.copyBuffer(src, dst, std::array {what});
     cmd.end();
     device.graphics_q.submit (
         ::vk::SubmitInfo {
@@ -301,9 +299,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
     create_swapchain(width, height);
     create_images();
     create_framebuffers(width, height);
-    create_staging_buffer();
     create_vertex_buffer();
-    commit_vertex_buffer();
     create_command_buffers(width, height);
 }
 
@@ -312,7 +308,7 @@ void si::vk::renderer::resize(std::uint32_t width, std::uint32_t height) {
 
     swapchain.reset();
     create_swapchain(width, height);
-    
+
     images.clear();
     image_views.clear();
     create_images();
@@ -395,7 +391,7 @@ namespace {
         };
         return VK_FALSE;
     }
-    
+
     vk::UniqueInstance make_instance() {
         spdlog::info("Available instance layers:");
         for (auto& layer : vk::enumerateInstanceLayerProperties()) {
@@ -405,7 +401,7 @@ namespace {
         for (const auto& extension : vk::enumerateInstanceExtensionProperties()) {
             spdlog::info(" * {}", extension.extensionName);
         }
-        
+
         auto layers = std::vector { "VK_LAYER_LUNARG_standard_validation" };
         auto extensions = std::vector { "VK_KHR_surface", "VK_KHR_wayland_surface", "VK_EXT_debug_utils", "VK_EXT_debug_report" };
         vk::UniqueInstance vk = vk::createInstanceUnique ({
@@ -417,7 +413,7 @@ namespace {
         spdlog::debug("Successfully created vulkan instance");
         return vk;
     }
-    VkDebugReportCallbackEXT attach_debug_reporter(VkInstance vk) {        
+    VkDebugReportCallbackEXT attach_debug_reporter(VkInstance vk) {
         auto vkCreateDebugReportCallbackEXT = reinterpret_cast<PFN_vkCreateDebugReportCallbackEXT>(vkGetInstanceProcAddr(vk, "vkCreateDebugReportCallbackEXT"));
         VkDebugReportCallbackCreateInfoEXT debug_callback_crinfo = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT,
