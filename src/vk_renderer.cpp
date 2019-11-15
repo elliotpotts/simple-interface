@@ -262,7 +262,8 @@ void si::vk::renderer::create_command_buffers(std::uint32_t width, std::uint32_t
         std::array<::vk::Buffer, 1> buffers = { *vertex_buffer };
         std::array<::vk::DeviceSize, 1> offsets = { 0 };
         cmd.bindVertexBuffers(0, 1, buffers.data(), offsets.data());
-        cmd.draw(vertices.size(), 1, 0, 0);
+        cmd.bindIndexBuffer(*index_buffer, ::vk::DeviceSize {0}, ::vk::IndexType::eUint16);
+        cmd.drawIndexed(indices.size(), 1, 0, 0, 0);
         cmd.endRenderPass();
         cmd.end();
     }
@@ -300,6 +301,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
     create_images();
     create_framebuffers(width, height);
     create_vertex_buffer();
+    create_index_buffer();
     create_command_buffers(width, height);
 }
 
