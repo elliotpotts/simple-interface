@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <numeric>
 #include <limits>
+#include <chrono>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <si/util.hpp>
 
 namespace {
@@ -30,12 +33,20 @@ std::array<::vk::VertexInputAttributeDescription, 2> si::vk::vertex::input_descr
     ::vk::VertexInputAttributeDescription {1, 0, ::vk::Format::eR32G32B32Sfloat, offsetof(vertex, color) }
 };
 
-void si::vk::renderer::create_pipeline() {
-    pipeline_layout = device.logical->createPipelineLayoutUnique({
+void si::vk::renderer::create_descriptor_set_layout() { 
+    descriptor_set_layout = device.logical->createDescriptorSetLayoutUnique({
         {},
-        0, nullptr,
-        0, nullptr
+        1,
+        &descriptor_set_layout_binding
     });
+}
+
+void si::vk::renderer::create_pipeline() {
+    pipeline_layout = device.logical->createPipelineLayoutUnique(::vk::PipelineLayoutCreateInfo(
+        {},
+        1, std::to_address(descriptor_set_layout), // descriptor set layouts
+        0, nullptr // push constant ranges
+    ));
     std::vector<::vk::PipelineShaderStageCreateInfo> stages;
     std::vector<::vk::UniqueShaderModule> shaders;
     for (auto [stage_name, stage] : std::vector {std::make_pair("vert", ::vk::ShaderStageFlagBits::eVertex),
@@ -59,7 +70,7 @@ void si::vk::renderer::create_pipeline() {
         {}, false, false,
         ::vk::PolygonMode::eFill,
         ::vk::CullModeFlagBits::eBack,
-        ::vk::FrontFace::eClockwise,
+        ::vk::FrontFace::eCounterClockwise,
         false, 0.0f, 0.0f, 0.0f);
     const ::vk::PipelineMultisampleStateCreateInfo multisample_state ({}, ::vk::SampleCountFlagBits::e1, false, 1.0f, nullptr, false, false);
     const ::vk::PipelineColorBlendAttachmentState color_blend_attachment_state (
@@ -129,11 +140,12 @@ void si::vk::renderer::create_swapchain(std::uint32_t width, std::uint32_t heigh
     spdlog::info("Available modes:");
     for (auto mode : modes) { spdlog::info(" * {}", to_string(mode)); }
 
+    swapchain_extent = ::vk::Extent2D {width, height};
     swapchain = device.logical->createSwapchainKHRUnique ({
         {},
         *surface,
         caps.minImageCount + 1,
-        win_image_format, win_color_space, {width, height},
+        win_image_format, win_color_space, swapchain_extent,
         1,
         ::vk::ImageUsageFlagBits::eColorAttachment,
         ::vk::SharingMode::eExclusive,
@@ -148,6 +160,7 @@ void si::vk::renderer::create_swapchain(std::uint32_t width, std::uint32_t heigh
 }
 void si::vk::renderer::create_images() {
     images = device.logical->getSwapchainImagesKHR(*swapchain);
+    image_views.clear();
     image_views.reserve(images.size());
     for (::vk::Image& img : images) {
         image_views.push_back (
@@ -219,7 +232,58 @@ void si::vk::renderer::create_index_buffer() {
     );
     buffer_copy(*staging_buffer, *index_buffer, {0, 0, size});
 }
+void si::vk::renderer::create_uniform_buffers() {
+    uniform_buffers.clear();
+    uniform_buffers.resize(images.size());
+    uniform_buffer_memories.clear();
+    uniform_buffer_memories.resize(images.size());
+    for (unsigned i = 0; i < images.size(); i++) {
+        std::tie(uniform_buffers[i], uniform_buffer_memories[i]) = device.make_buffer (
+            ::vk::DeviceSize { sizeof(uniform_buffer_object) },
+            ::vk::BufferUsageFlagBits::eUniformBuffer,
+            ::vk::SharingMode::eExclusive,
+            ::vk::MemoryPropertyFlagBits::eHostVisible | ::vk::MemoryPropertyFlagBits::eHostCoherent
+        );
+    }
+}
+void si::vk::renderer::create_descriptor_pool() {
+    ::vk::DescriptorPoolSize pool_size {
+        ::vk::DescriptorType::eUniformBuffer,
+        static_cast<std::uint32_t>(images.size()),
+    };
+    descriptor_pool = device.logical->createDescriptorPoolUnique( ::vk::DescriptorPoolCreateInfo {
+        {},
+        static_cast<std::uint32_t>(images.size()),
+        1,
+        &pool_size
+    });
+}
+void si::vk::renderer::create_descriptor_sets() {
+    std::vector<::vk::DescriptorSetLayout> descriptor_set_layouts(images.size(), *descriptor_set_layout);
+    descriptor_sets = device.logical->allocateDescriptorSets(::vk::DescriptorSetAllocateInfo {
+        *descriptor_pool,
+        static_cast<std::uint32_t>(images.size()),
+        descriptor_set_layouts.data()
+    });
+    for (std::size_t i = 0 ; i < images.size(); i++) {
+        auto buffer_info = ::vk::DescriptorBufferInfo { *uniform_buffers[i], 0, sizeof(uniform_buffer_object) };
+        device.logical->updateDescriptorSets (
+            ::vk::WriteDescriptorSet {
+                descriptor_sets[i],
+                0, // dstBinding
+                0, // dstArrayElement
+                1, // descriptorCount
+                ::vk::DescriptorType::eUniformBuffer, // descriptorType
+                nullptr, // pImageInfo
+                &buffer_info, // pBufferInfo
+                nullptr // pTexelBufferInfo
+            },
+            std::array<::vk::CopyDescriptorSet,0>{}
+        );
+    }
+}
 void si::vk::renderer::create_framebuffers(std::uint32_t width, std::uint32_t height) {
+    framebuffers.clear();
     framebuffers.reserve(image_views.size());
     for (::vk::UniqueImageView& view_ptr : image_views) {
         framebuffers.push_back (
@@ -263,10 +327,26 @@ void si::vk::renderer::create_command_buffers(std::uint32_t width, std::uint32_t
         std::array<::vk::DeviceSize, 1> offsets = { 0 };
         cmd.bindVertexBuffers(0, 1, buffers.data(), offsets.data());
         cmd.bindIndexBuffer(*index_buffer, ::vk::DeviceSize {0}, ::vk::IndexType::eUint16);
+        cmd.bindDescriptorSets(::vk::PipelineBindPoint::eGraphics, *pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
         cmd.drawIndexed(indices.size(), 1, 0, 0, 0);
         cmd.endRenderPass();
         cmd.end();
     }
+}
+void si::vk::renderer::update_uniform_buffers(unsigned ix) {
+    using clock = std::chrono::high_resolution_clock;
+    static auto start = clock::now();
+    auto now = clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(now - start).count();
+    uniform_buffer_object ubo = {
+        .model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+        .view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+        .proj = glm::perspective(glm::radians(45.0f), swapchain_extent.width / static_cast<float>(swapchain_extent.height), 0.1f, 10.0f)
+    };
+    ubo.proj[1][1] *= -1.0f; // glm's y clip-space axis is opposite to vulkans
+    void* data = device.logical->mapMemory(*uniform_buffer_memories[ix], 0, sizeof(ubo));
+    std::copy(&ubo, &ubo + 1, reinterpret_cast<uniform_buffer_object*>(data));
+    device.logical->unmapMemory(*uniform_buffer_memories[ix]);
 }
 void si::vk::renderer::buffer_copy(::vk::Buffer src, ::vk::Buffer dst, ::vk::BufferCopy what) {
     std::vector<::vk::UniqueCommandBuffer> cmds = device.logical->allocateCommandBuffersUnique({
@@ -295,6 +375,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
     render_finished(device.logical->createSemaphoreUnique({})),
     in_flight(device.logical->createFenceUnique({::vk::FenceCreateFlagBits::eSignaled})),
     surface(std::move(old_surface)) {
+    create_descriptor_set_layout();
     create_pipeline();
     graphics_command_pool = device.logical->createCommandPoolUnique({{}, device.graphics_q_family_ix});
     create_swapchain(width, height);
@@ -302,23 +383,20 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
     create_framebuffers(width, height);
     create_vertex_buffer();
     create_index_buffer();
+    create_uniform_buffers();
+    create_descriptor_pool();
+    create_descriptor_sets();
     create_command_buffers(width, height);
 }
 
 void si::vk::renderer::resize(std::uint32_t width, std::uint32_t height) {
     device.logical->waitIdle();
-
-    swapchain.reset();
     create_swapchain(width, height);
-
-    images.clear();
-    image_views.clear();
     create_images();
-
-    framebuffers.clear();
     create_framebuffers(width, height);
-
-    command_buffers.clear();
+    create_uniform_buffers();
+    create_descriptor_pool();
+    create_descriptor_sets();
     create_command_buffers(width, height);
 }
 
@@ -335,6 +413,7 @@ void si::vk::renderer::draw() {
         *image_available,
         nullptr
     );
+    update_uniform_buffers(image_ix);
     ::vk::PipelineStageFlags pipeline_stage = ::vk::PipelineStageFlagBits::eColorAttachmentOutput;
     device.graphics_q.submit (
         ::vk::SubmitInfo {

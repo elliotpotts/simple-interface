@@ -39,6 +39,11 @@ namespace si {
             static ::vk::VertexInputBindingDescription binding_description;
             static std::array<::vk::VertexInputAttributeDescription, 2> input_descriptions;
         };
+        struct uniform_buffer_object {
+            glm::mat4 model;
+            glm::mat4 view;
+            glm::mat4 proj;
+        };
         struct renderer {
             gfx_device& device;
             ::vk::UniqueSemaphore image_available;
@@ -50,6 +55,14 @@ namespace si {
             //::vk::PresentModeKHR surface_present_mode;
 
             //TODO: Move pipeline into gfx_device - maybe?
+            ::vk::DescriptorSetLayoutBinding descriptor_set_layout_binding = {
+                0, // binding
+                ::vk::DescriptorType::eUniformBuffer,
+                1, // descriptorCount
+                ::vk::ShaderStageFlagBits::eVertex, // stageFlags
+                nullptr // immutableSamplers
+            };
+            ::vk::UniqueDescriptorSetLayout descriptor_set_layout;
             ::vk::UniquePipelineLayout pipeline_layout;
             ::vk::UniqueRenderPass render_pass;
             ::vk::UniquePipeline pipeline;
@@ -58,6 +71,11 @@ namespace si {
             ::vk::UniqueDeviceMemory vertex_buffer_memory;
             ::vk::UniqueBuffer index_buffer;
             ::vk::UniqueDeviceMemory index_buffer_memory;
+            std::vector<::vk::UniqueBuffer> uniform_buffers;
+            std::vector<::vk::UniqueDeviceMemory> uniform_buffer_memories;
+            ::vk::UniqueDescriptorPool descriptor_pool;
+            std::vector<::vk::DescriptorSet> descriptor_sets; // not unique because they'll be destroyed along with the above pool.
+            ::vk::Extent2D swapchain_extent;
             ::vk::UniqueSwapchainKHR swapchain;
             std::vector<::vk::Image> images;
             std::vector<::vk::UniqueImageView> image_views;
@@ -72,13 +90,19 @@ namespace si {
                 0, 1, 2                
             };
 
+            void create_descriptor_set_layout();
             void create_pipeline();
             void create_swapchain(std::uint32_t width, std::uint32_t height);
             void create_images();
             void create_framebuffers(std::uint32_t width, std::uint32_t height);
             void create_vertex_buffer();
             void create_index_buffer();
+            void create_uniform_buffers();
+            void create_descriptor_pool();
+            void create_descriptor_sets();
             void create_command_buffers(std::uint32_t width, std::uint32_t height);
+
+            void update_uniform_buffers(unsigned ix);
 
             void buffer_copy(::vk::Buffer src, ::vk::Buffer dst, ::vk::BufferCopy what);
 
