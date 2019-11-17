@@ -90,17 +90,17 @@ namespace si {
                 0, 1, 2                
             };
 
-            void create_descriptor_set_layout();
-            void create_pipeline();
-            void create_swapchain(std::uint32_t width, std::uint32_t height);
-            void create_images();
-            void create_framebuffers(std::uint32_t width, std::uint32_t height);
-            void create_vertex_buffer();
-            void create_index_buffer();
-            void create_uniform_buffers();
-            void create_descriptor_pool();
-            void create_descriptor_sets();
-            void create_command_buffers(std::uint32_t width, std::uint32_t height);
+            void reset_descriptor_set_layout();
+            void reset_pipeline();
+            void reset_swapchain(std::uint32_t width, std::uint32_t height);
+            void reset_images();
+            void reset_framebuffers(std::uint32_t width, std::uint32_t height);
+            void reset_vertex_buffer();
+            void reset_index_buffer();
+            void reset_uniform_buffers();
+            void reset_descriptor_pool();
+            void reset_descriptor_sets();
+            void reset_command_buffers(std::uint32_t width, std::uint32_t height);
 
             void update_uniform_buffers(unsigned ix);
 

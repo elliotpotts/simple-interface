@@ -33,7 +33,7 @@ std::array<::vk::VertexInputAttributeDescription, 2> si::vk::vertex::input_descr
     ::vk::VertexInputAttributeDescription {1, 0, ::vk::Format::eR32G32B32Sfloat, offsetof(vertex, color) }
 };
 
-void si::vk::renderer::create_descriptor_set_layout() { 
+void si::vk::renderer::reset_descriptor_set_layout() { 
     descriptor_set_layout = device.logical->createDescriptorSetLayoutUnique({
         {},
         1,
@@ -41,7 +41,7 @@ void si::vk::renderer::create_descriptor_set_layout() {
     });
 }
 
-void si::vk::renderer::create_pipeline() {
+void si::vk::renderer::reset_pipeline() {
     pipeline_layout = device.logical->createPipelineLayoutUnique(::vk::PipelineLayoutCreateInfo(
         {},
         1, std::to_address(descriptor_set_layout), // descriptor set layouts
@@ -129,7 +129,7 @@ void si::vk::renderer::create_pipeline() {
             nullptr,
             -1));
 }
-void si::vk::renderer::create_swapchain(std::uint32_t width, std::uint32_t height) {
+void si::vk::renderer::reset_swapchain(std::uint32_t width, std::uint32_t height) {
     ::vk::SurfaceCapabilitiesKHR caps = device.physical.getSurfaceCapabilitiesKHR(*surface);
 
     std::vector<::vk::SurfaceFormatKHR> formats = device.physical.getSurfaceFormatsKHR(*surface);
@@ -158,7 +158,7 @@ void si::vk::renderer::create_swapchain(std::uint32_t width, std::uint32_t heigh
         nullptr
     });
 }
-void si::vk::renderer::create_images() {
+void si::vk::renderer::reset_images() {
     images = device.logical->getSwapchainImagesKHR(*swapchain);
     image_views.clear();
     image_views.reserve(images.size());
@@ -212,7 +212,7 @@ std::tuple<::vk::UniqueBuffer, ::vk::UniqueDeviceMemory> si::vk::gfx_device::mak
     logical->bindBufferMemory(*buffer, *buffer_memory, 0);
     return std::make_tuple(std::move(buffer), std::move(buffer_memory));
 }
-void si::vk::renderer::create_vertex_buffer() {
+void si::vk::renderer::reset_vertex_buffer() {
     auto [staging_buffer, staging_buffer_memory, size] = stage(vertices.begin(), vertices.end());
     std::tie(vertex_buffer, vertex_buffer_memory) = device.make_buffer (
         size,
@@ -222,7 +222,7 @@ void si::vk::renderer::create_vertex_buffer() {
     );
     buffer_copy(*staging_buffer, *vertex_buffer, {0, 0, size});
 }
-void si::vk::renderer::create_index_buffer() {
+void si::vk::renderer::reset_index_buffer() {
     auto [staging_buffer, staging_buffer_memory, size] = stage(indices.begin(), indices.end());
     std::tie(index_buffer, index_buffer_memory) = device.make_buffer (
         size,
@@ -232,7 +232,7 @@ void si::vk::renderer::create_index_buffer() {
     );
     buffer_copy(*staging_buffer, *index_buffer, {0, 0, size});
 }
-void si::vk::renderer::create_uniform_buffers() {
+void si::vk::renderer::reset_uniform_buffers() {
     uniform_buffers.clear();
     uniform_buffers.resize(images.size());
     uniform_buffer_memories.clear();
@@ -246,7 +246,7 @@ void si::vk::renderer::create_uniform_buffers() {
         );
     }
 }
-void si::vk::renderer::create_descriptor_pool() {
+void si::vk::renderer::reset_descriptor_pool() {
     ::vk::DescriptorPoolSize pool_size {
         ::vk::DescriptorType::eUniformBuffer,
         static_cast<std::uint32_t>(images.size()),
@@ -258,7 +258,7 @@ void si::vk::renderer::create_descriptor_pool() {
         &pool_size
     });
 }
-void si::vk::renderer::create_descriptor_sets() {
+void si::vk::renderer::reset_descriptor_sets() {
     std::vector<::vk::DescriptorSetLayout> descriptor_set_layouts(images.size(), *descriptor_set_layout);
     descriptor_sets = device.logical->allocateDescriptorSets(::vk::DescriptorSetAllocateInfo {
         *descriptor_pool,
@@ -282,7 +282,7 @@ void si::vk::renderer::create_descriptor_sets() {
         );
     }
 }
-void si::vk::renderer::create_framebuffers(std::uint32_t width, std::uint32_t height) {
+void si::vk::renderer::reset_framebuffers(std::uint32_t width, std::uint32_t height) {
     framebuffers.clear();
     framebuffers.reserve(image_views.size());
     for (::vk::UniqueImageView& view_ptr : image_views) {
@@ -297,7 +297,7 @@ void si::vk::renderer::create_framebuffers(std::uint32_t width, std::uint32_t he
         );
     }
 }
-void si::vk::renderer::create_command_buffers(std::uint32_t width, std::uint32_t height) {
+void si::vk::renderer::reset_command_buffers(std::uint32_t width, std::uint32_t height) {
     command_buffers = device.logical->allocateCommandBuffersUnique({
         *graphics_command_pool,
         ::vk::CommandBufferLevel::ePrimary,
@@ -375,29 +375,29 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
     render_finished(device.logical->createSemaphoreUnique({})),
     in_flight(device.logical->createFenceUnique({::vk::FenceCreateFlagBits::eSignaled})),
     surface(std::move(old_surface)) {
-    create_descriptor_set_layout();
-    create_pipeline();
+    reset_descriptor_set_layout();
+    reset_pipeline();
     graphics_command_pool = device.logical->createCommandPoolUnique({{}, device.graphics_q_family_ix});
-    create_swapchain(width, height);
-    create_images();
-    create_framebuffers(width, height);
-    create_vertex_buffer();
-    create_index_buffer();
-    create_uniform_buffers();
-    create_descriptor_pool();
-    create_descriptor_sets();
-    create_command_buffers(width, height);
+    reset_swapchain(width, height);
+    reset_images();
+    reset_framebuffers(width, height);
+    reset_vertex_buffer();
+    reset_index_buffer();
+    reset_uniform_buffers();
+    reset_descriptor_pool();
+    reset_descriptor_sets();
+    reset_command_buffers(width, height);
 }
 
 void si::vk::renderer::resize(std::uint32_t width, std::uint32_t height) {
     device.logical->waitIdle();
-    create_swapchain(width, height);
-    create_images();
-    create_framebuffers(width, height);
-    create_uniform_buffers();
-    create_descriptor_pool();
-    create_descriptor_sets();
-    create_command_buffers(width, height);
+    reset_swapchain(width, height);
+    reset_images();
+    reset_framebuffers(width, height);
+    reset_uniform_buffers();
+    reset_descriptor_pool();
+    reset_descriptor_sets();
+    reset_command_buffers(width, height);
 }
 
 si::vk::renderer::~renderer() {
