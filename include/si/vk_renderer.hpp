@@ -31,13 +31,15 @@ namespace si {
 
             gfx_device(::vk::PhysicalDevice physical, ::vk::Queue graphics_q, std::uint32_t graphics_q_ix, ::vk::Queue present_q, std::uint32_t present_q_ix, ::vk::UniqueDevice logical);
             std::unique_ptr<renderer> make_renderer(::vk::UniqueSurfaceKHR, std::uint32_t width, std::uint32_t height);
+            std::uint32_t find_memory_type_index(::vk::MemoryRequirements reqs, ::vk::MemoryPropertyFlags flags);
             std::tuple<::vk::UniqueBuffer, ::vk::UniqueDeviceMemory> make_buffer(::vk::DeviceSize buffer_size, ::vk::BufferUsageFlags buffer_usage, ::vk::SharingMode sharing_mode, ::vk::MemoryPropertyFlags memory_flags);
         };
         struct vertex {
             glm::vec2 pos;
             glm::vec3 color;
+            glm::vec2 uv;
             static ::vk::VertexInputBindingDescription binding_description;
-            static std::array<::vk::VertexInputAttributeDescription, 2> input_descriptions;
+            static std::array<::vk::VertexInputAttributeDescription, 3> input_descriptions;
         };
         struct uniform_buffer_object {
             glm::mat4 model;
@@ -55,12 +57,21 @@ namespace si {
             //::vk::PresentModeKHR surface_present_mode;
 
             //TODO: Move pipeline into gfx_device - maybe?
-            ::vk::DescriptorSetLayoutBinding descriptor_set_layout_binding = {
-                0, // binding
-                ::vk::DescriptorType::eUniformBuffer,
-                1, // descriptorCount
-                ::vk::ShaderStageFlagBits::eVertex, // stageFlags
-                nullptr // immutableSamplers
+            std::array<::vk::DescriptorSetLayoutBinding, 2> descriptor_set_layout_bindings = std::array {
+                // ubo binding
+                ::vk::DescriptorSetLayoutBinding()
+                .setBinding(0)
+                .setDescriptorType(::vk::DescriptorType::eUniformBuffer)
+                .setDescriptorCount(1)
+                .setStageFlags(::vk::ShaderStageFlagBits::eVertex)
+                .setPImmutableSamplers(nullptr),
+                // sampler binding
+                ::vk::DescriptorSetLayoutBinding()
+                .setBinding(1)
+                .setDescriptorType(::vk::DescriptorType::eCombinedImageSampler)
+                .setDescriptorCount(1)
+                .setStageFlags(::vk::ShaderStageFlagBits::eFragment)
+                .setPImmutableSamplers(nullptr)
             };
             ::vk::UniqueDescriptorSetLayout descriptor_set_layout;
             ::vk::UniquePipelineLayout pipeline_layout;
@@ -75,6 +86,10 @@ namespace si {
             std::vector<::vk::UniqueDeviceMemory> uniform_buffer_memories;
             ::vk::UniqueDescriptorPool descriptor_pool;
             std::vector<::vk::DescriptorSet> descriptor_sets; // not unique because they'll be destroyed along with the above pool.
+            ::vk::UniqueImage texture_image;
+            ::vk::UniqueDeviceMemory texture_image_memory;
+            ::vk::UniqueImageView texture_image_view;
+            ::vk::UniqueSampler texture_sampler;
             ::vk::Extent2D swapchain_extent;
             ::vk::UniqueSwapchainKHR swapchain;
             std::vector<::vk::Image> swapchain_images;
@@ -82,10 +97,10 @@ namespace si {
             std::vector<::vk::UniqueFramebuffer> framebuffers;
             std::vector<::vk::UniqueCommandBuffer> command_buffers;
             const std::vector<vertex> vertices = {
-                {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-                {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-                {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-                {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+                {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+                {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+                {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+                {{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
             };
             const std::vector<uint16_t> indices = {
                 0, 1, 2, 2, 3, 0
@@ -101,11 +116,38 @@ namespace si {
             void reset_uniform_buffers();
             void reset_descriptor_pool();
             void reset_descriptor_sets();
+            void reset_texture_image(std::string filepath);
             void reset_command_buffers(std::uint32_t width, std::uint32_t height);
 
             void update_uniform_buffers(unsigned ix);
 
-            void buffer_copy(::vk::Buffer src, ::vk::Buffer dst, ::vk::BufferCopy what);
+            template<typename F>
+            void run_oneshot(F&& f) {
+                std::vector<::vk::UniqueCommandBuffer> cmds = device.logical->allocateCommandBuffersUnique({
+                    *graphics_command_pool,
+                    ::vk::CommandBufferLevel::ePrimary,
+                    1
+                });
+                ::vk::CommandBuffer& cmd = *cmds.front();
+                cmd.begin(::vk::CommandBufferBeginInfo {});
+                f(cmd);
+                cmd.end();
+                device.graphics_q.submit (
+                    ::vk::SubmitInfo {
+                        0, nullptr,
+                        nullptr,
+                        1, &cmd,
+                        0, nullptr
+                   },
+                    nullptr
+                );
+                device.graphics_q.waitIdle();
+            }
+            void copy(::vk::Buffer src, ::vk::Buffer dst, ::vk::BufferCopy what);
+            void copy(::vk::Buffer src, ::vk::Image dst, ::vk::BufferImageCopy what);
+            // These are poorly named and thought out [temporary] helper functions
+            void image_layout_stage0(::vk::Image& img, ::vk::Format format);
+            void image_layout_stage1(::vk::Image& img, ::vk::Format format);
 
             template<typename It>
             std::tuple<::vk::UniqueBuffer, ::vk::UniqueDeviceMemory, std::size_t> stage(const It begin, const It end) {

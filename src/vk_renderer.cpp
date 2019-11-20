@@ -5,6 +5,7 @@
 #include <numeric>
 #include <limits>
 #include <chrono>
+#include <array>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <si/util.hpp>
@@ -28,16 +29,16 @@ namespace {
     .stride = sizeof(vertex),
     .inputRate = ::vk::VertexInputRate::eVertex
 };
-std::array<::vk::VertexInputAttributeDescription, 2> si::vk::vertex::input_descriptions = {
+std::array<::vk::VertexInputAttributeDescription, 3> si::vk::vertex::input_descriptions = {
     ::vk::VertexInputAttributeDescription {0, 0, ::vk::Format::eR32G32Sfloat, offsetof(vertex, pos) },
-    ::vk::VertexInputAttributeDescription {1, 0, ::vk::Format::eR32G32B32Sfloat, offsetof(vertex, color) }
+    ::vk::VertexInputAttributeDescription {1, 0, ::vk::Format::eR32G32B32Sfloat, offsetof(vertex, color) },
+    ::vk::VertexInputAttributeDescription {2, 0, ::vk::Format::eR32G32Sfloat, offsetof(vertex, uv) }
 };
-
 void si::vk::renderer::reset_descriptor_set_layout() { 
     descriptor_set_layout = device.logical->createDescriptorSetLayoutUnique({
         {},
-        1,
-        &descriptor_set_layout_binding
+        static_cast<std::uint32_t>(descriptor_set_layout_bindings.size()),
+        descriptor_set_layout_bindings.data()
     });
 }
 
@@ -178,6 +179,16 @@ void si::vk::renderer::reset_swapchain_images() {
         );
     }
 }
+std::uint32_t si::vk::gfx_device::find_memory_type_index(::vk::MemoryRequirements reqs, ::vk::MemoryPropertyFlags flags) {
+    ::vk::PhysicalDeviceMemoryProperties mem_props = physical.getMemoryProperties();
+    for (std::uint32_t i = 0; i < mem_props.memoryTypeCount; i++) {
+        if (reqs.memoryTypeBits & (i << 1) // see if the memory is of the ith type
+            && (mem_props.memoryTypes[i].propertyFlags & flags) == flags) {
+            return i;
+        }
+    }
+    throw std::runtime_error("Can't find memory type satisfying given properties or requirements");
+}
 std::tuple<::vk::UniqueBuffer, ::vk::UniqueDeviceMemory> si::vk::gfx_device::make_buffer (
     ::vk::DeviceSize buffer_size,
     ::vk::BufferUsageFlags buffer_usage,
@@ -190,23 +201,10 @@ std::tuple<::vk::UniqueBuffer, ::vk::UniqueDeviceMemory> si::vk::gfx_device::mak
         buffer_usage,
         sharing_mode
     });
-    ::vk::MemoryRequirements mem_req = logical->getBufferMemoryRequirements(*buffer);
-    ::vk::PhysicalDeviceMemoryProperties mem_props = physical.getMemoryProperties();
-    std::uint32_t req_type_mask = mem_req.memoryTypeBits;
-    ::vk::MemoryPropertyFlags req_properties = memory_flags;
-
-    std::optional<std::uint32_t> memory_type;
-    for (std::uint32_t i = 0; i < mem_props.memoryTypeCount; i++) {
-        if (req_type_mask & (i << 1) && (mem_props.memoryTypes[i].propertyFlags & req_properties) == req_properties) {
-            memory_type = i;
-            break;
-        }
-    }
-    if (!memory_type) {
-        throw std::runtime_error("Can't find suitable memory type for buffer memory allocation");
-    }
+    ::vk::MemoryRequirements memory_reqs = logical->getBufferMemoryRequirements(*buffer);
+    std::uint32_t memory_type = find_memory_type_index(memory_reqs, memory_flags);
     ::vk::UniqueDeviceMemory buffer_memory = logical->allocateMemoryUnique (
-        ::vk::MemoryAllocateInfo { mem_req.size, *memory_type },
+        ::vk::MemoryAllocateInfo { memory_reqs.size, memory_type },
         nullptr
     );
     logical->bindBufferMemory(*buffer, *buffer_memory, 0);
@@ -220,7 +218,7 @@ void si::vk::renderer::reset_vertex_buffer() {
         ::vk::SharingMode::eExclusive,
         ::vk::MemoryPropertyFlagBits::eDeviceLocal
     );
-    buffer_copy(*staging_buffer, *vertex_buffer, {0, 0, size});
+    copy(*staging_buffer, *vertex_buffer, {0, 0, size});
 }
 void si::vk::renderer::reset_index_buffer() {
     auto [staging_buffer, staging_buffer_memory, size] = stage(indices.begin(), indices.end());
@@ -230,7 +228,7 @@ void si::vk::renderer::reset_index_buffer() {
         ::vk::SharingMode::eExclusive,
         ::vk::MemoryPropertyFlagBits::eDeviceLocal
     );
-    buffer_copy(*staging_buffer, *index_buffer, {0, 0, size});
+    copy(*staging_buffer, *index_buffer, {0, 0, size});
 }
 void si::vk::renderer::reset_uniform_buffers() {
     uniform_buffers.clear();
@@ -247,15 +245,21 @@ void si::vk::renderer::reset_uniform_buffers() {
     }
 }
 void si::vk::renderer::reset_descriptor_pool() {
-    ::vk::DescriptorPoolSize pool_size {
-        ::vk::DescriptorType::eUniformBuffer,
-        static_cast<std::uint32_t>(swapchain_images.size()),
+    auto pool_sizes = std::array {
+        // ubo pool
+        ::vk::DescriptorPoolSize{}
+        .setType(::vk::DescriptorType::eUniformBuffer)
+        .setDescriptorCount(static_cast<std::uint32_t>(swapchain_images.size())),
+        // sampler pool
+        ::vk::DescriptorPoolSize{}
+        .setType(::vk::DescriptorType::eCombinedImageSampler)
+        .setDescriptorCount(static_cast<std::uint32_t>(swapchain_images.size()))
     };
     descriptor_pool = device.logical->createDescriptorPoolUnique( ::vk::DescriptorPoolCreateInfo {
         {},
         static_cast<std::uint32_t>(swapchain_images.size()),
-        1,
-        &pool_size
+        static_cast<std::uint32_t>(pool_sizes.size()),
+        pool_sizes.data()
     });
 }
 void si::vk::renderer::reset_descriptor_sets() {
@@ -267,20 +271,189 @@ void si::vk::renderer::reset_descriptor_sets() {
     });
     for (std::size_t i = 0 ; i < swapchain_images.size(); i++) {
         auto buffer_info = ::vk::DescriptorBufferInfo { *uniform_buffers[i], 0, sizeof(uniform_buffer_object) };
+        auto image_info = ::vk::DescriptorImageInfo()
+            .setImageLayout(::vk::ImageLayout::eShaderReadOnlyOptimal)
+            .setImageView(*texture_image_view)
+            .setSampler(*texture_sampler);
         device.logical->updateDescriptorSets (
-            ::vk::WriteDescriptorSet {
-                descriptor_sets[i],
-                0, // dstBinding
-                0, // dstArrayElement
-                1, // descriptorCount
-                ::vk::DescriptorType::eUniformBuffer, // descriptorType
-                nullptr, // pImageInfo
-                &buffer_info, // pBufferInfo
-                nullptr // pTexelBufferInfo
+            std::array {
+                // uniform buffer
+                ::vk::WriteDescriptorSet{}
+                     .setDstSet(descriptor_sets[i])
+                     .setDstBinding(0)
+                     .setDstArrayElement(0)
+                     .setDescriptorCount(1)
+                     .setDescriptorType(::vk::DescriptorType::eUniformBuffer)
+                     .setPBufferInfo(&buffer_info),
+                ::vk::WriteDescriptorSet{}
+                     .setDstSet(descriptor_sets[i])
+                     .setDstBinding(1)
+                     .setDstArrayElement(0)
+                     .setDescriptorCount(1)
+                     .setDescriptorType(::vk::DescriptorType::eCombinedImageSampler)
+                     .setPImageInfo(&image_info)
             },
-            std::array<::vk::CopyDescriptorSet,0>{}
+            std::array<::vk::CopyDescriptorSet, 0> {}
         );
     }
+}
+#include <FreeImage.h>
+//TODO: Make more robust
+// image, start, end
+std::tuple<std::unique_ptr<FIBITMAP, void(*)(FIBITMAP*)>, ::vk::Format, unsigned, unsigned, BYTE*, BYTE*> load_bitmap(std::string filepath) {
+    spdlog::debug("Using FreeImage version {}", FreeImage_GetVersion());
+    FREE_IMAGE_FORMAT format = FreeImage_GetFileType(filepath.c_str());
+    if (!format) {
+        throw std::runtime_error("Couldn't determine image format!");
+    }
+    FIBITMAP* bitmap = FreeImage_Load(format, filepath.c_str());
+    if (!bitmap) {
+        throw std::runtime_error("Couldn't load image!");
+    }
+    FREE_IMAGE_TYPE type = FreeImage_GetImageType(bitmap);
+    FREE_IMAGE_COLOR_TYPE color_type = FreeImage_GetColorType(bitmap);
+    unsigned bit_depth = FreeImage_GetBPP(bitmap);
+    if (type != FIT_BITMAP || color_type != FIC_RGBALPHA || bit_depth != 32) {
+        throw std::runtime_error("Image is either not rgb, not a bitmap or not 32 bits per pixel. Aborting.");
+        //TODO: convert RGB to RGBA
+    }
+    BYTE* bitmap_begin = FreeImage_GetBits(bitmap);
+    if (!bitmap_begin) {
+        throw std::runtime_error("Image does not contain pixel data. Aborting.");
+    }
+    unsigned width = FreeImage_GetWidth(bitmap);
+    unsigned height = FreeImage_GetHeight(bitmap);
+    unsigned Bpp = bit_depth / ((sizeof(*bitmap_begin) * CHAR_BIT));
+    BYTE* bitmap_end = bitmap_begin + width * height * Bpp;
+    return std::make_tuple (
+        std::unique_ptr<FIBITMAP, void(*)(FIBITMAP*)>{bitmap, &FreeImage_Unload},
+        ::vk::Format::eR8G8B8A8Unorm,
+        width, height,
+        bitmap_begin, bitmap_end
+    );
+}
+void si::vk::renderer::image_layout_stage0(::vk::Image& img, ::vk::Format format) {
+    auto barrier = ::vk::ImageMemoryBarrier {
+        ::vk::AccessFlags{}, ::vk::AccessFlagBits::eTransferWrite,
+        ::vk::ImageLayout::eUndefined, ::vk::ImageLayout::eTransferDstOptimal,
+        0, 0,
+        img,
+        ::vk::ImageSubresourceRange {
+            ::vk::ImageAspectFlagBits::eColor,
+            0, 1,
+            0, 1
+        }
+    };
+    run_oneshot(
+        [&](::vk::CommandBuffer& cmd) {
+            cmd.pipelineBarrier (
+                ::vk::PipelineStageFlagBits::eTopOfPipe, ::vk::PipelineStageFlagBits::eTransfer,
+                ::vk::DependencyFlags{},
+                0, nullptr,
+                0, nullptr,
+                1, &barrier
+            );
+        }
+    );
+}
+void si::vk::renderer::image_layout_stage1(::vk::Image& img, ::vk::Format format) {
+    auto barrier = ::vk::ImageMemoryBarrier {
+        ::vk::AccessFlagBits::eTransferWrite, ::vk::AccessFlagBits::eShaderRead,
+        ::vk::ImageLayout::eUndefined, ::vk::ImageLayout::eShaderReadOnlyOptimal,
+        0, 0,
+        img,
+        ::vk::ImageSubresourceRange {
+            ::vk::ImageAspectFlagBits::eColor,
+            0, 1,
+            0, 1
+        }
+    };
+    run_oneshot(
+        [&](::vk::CommandBuffer& cmd) {
+            cmd.pipelineBarrier (
+                ::vk::PipelineStageFlagBits::eTransfer, ::vk::PipelineStageFlagBits::eFragmentShader,
+                ::vk::DependencyFlags{},
+                0, nullptr,
+                0, nullptr,
+                1, &barrier
+            );
+        }
+    );
+}
+void si::vk::renderer::reset_texture_image(std::string filepath) {
+    auto [bitmap, bitmap_format, bitmap_width, bitmap_height, bitmap_begin, bitmap_end] = load_bitmap(filepath);
+    auto [staging_buffer, staging_buffer_memory, size] = stage(bitmap_begin, bitmap_end);
+    texture_image = device.logical->createImageUnique (
+        ::vk::ImageCreateInfo {}
+        .setImageType(::vk::ImageType::e2D)
+        .setFormat(bitmap_format)
+        .setExtent({bitmap_width, bitmap_height, 1})
+        .setMipLevels(1)
+        .setArrayLayers(1)
+        .setSamples(::vk::SampleCountFlagBits::e1)
+        .setTiling(::vk::ImageTiling::eOptimal)
+        .setUsage(::vk::ImageUsageFlagBits::eTransferDst | ::vk::ImageUsageFlagBits::eSampled)
+        .setSharingMode(::vk::SharingMode::eExclusive)
+        .setInitialLayout(::vk::ImageLayout::eUndefined)
+    );
+    ::vk::MemoryRequirements memory_reqs = device.logical->getImageMemoryRequirements(*texture_image);
+    std::uint32_t memory_type = device.find_memory_type_index(memory_reqs, ::vk::MemoryPropertyFlagBits::eDeviceLocal);
+    texture_image_memory = device.logical->allocateMemoryUnique (
+        ::vk::MemoryAllocateInfo { memory_reqs.size, memory_type },
+        nullptr
+    );
+    device.logical->bindImageMemory(*texture_image, *texture_image_memory, {});
+
+    image_layout_stage0(*texture_image, bitmap_format);
+    copy (
+        *staging_buffer,
+        *texture_image,
+        ::vk::BufferImageCopy{}
+            .setBufferOffset(0)
+            .setBufferRowLength(0)
+            .setBufferImageHeight(0)
+            .setImageSubresource (::vk::ImageSubresourceLayers{}
+                .setAspectMask(::vk::ImageAspectFlagBits::eColor)
+                .setMipLevel(0)
+                .setBaseArrayLayer(0)
+                .setLayerCount(1)
+            )
+            .setImageOffset({0, 0, 0})
+            .setImageExtent({bitmap_width, bitmap_height, 1})
+    );
+    image_layout_stage1(*texture_image, bitmap_format);
+    texture_image_view = device.logical->createImageViewUnique (
+        ::vk::ImageViewCreateInfo()
+        .setImage(*texture_image)
+        .setViewType(::vk::ImageViewType::e2D)
+        .setFormat(bitmap_format)
+        .setSubresourceRange (
+            ::vk::ImageSubresourceRange()
+            .setAspectMask(::vk::ImageAspectFlagBits::eColor)
+            .setBaseMipLevel(0)
+            .setLevelCount(1)
+            .setBaseArrayLayer(0)
+            .setLayerCount(1)
+        )
+    );
+    texture_sampler = device.logical->createSamplerUnique (
+        ::vk::SamplerCreateInfo()
+        .setMagFilter(::vk::Filter::eLinear)
+        .setMinFilter(::vk::Filter::eLinear)
+        .setAddressModeU(::vk::SamplerAddressMode::eRepeat)
+        .setAddressModeV(::vk::SamplerAddressMode::eRepeat)
+        .setAddressModeW(::vk::SamplerAddressMode::eRepeat)
+        .setAnisotropyEnable(true)
+        .setMaxAnisotropy(16)
+        .setBorderColor(::vk::BorderColor::eIntOpaqueBlack)
+        .setUnnormalizedCoordinates(false)
+        .setCompareEnable(false)
+        .setCompareOp(::vk::CompareOp::eAlways)
+        .setMipmapMode(::vk::SamplerMipmapMode::eLinear)
+        .setMipLodBias(0.0f)
+        .setMinLod(0.0f)
+        .setMaxLod(0.0f)
+    );
 }
 void si::vk::renderer::reset_framebuffers(std::uint32_t width, std::uint32_t height) {
     framebuffers.clear();
@@ -339,8 +512,8 @@ void si::vk::renderer::update_uniform_buffers(unsigned ix) {
     auto now = clock::now();
     float time = std::chrono::duration<float, std::chrono::seconds::period>(now - start).count();
     uniform_buffer_object ubo = {
-        .model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
-        .view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+        .model = glm::rotate(glm::mat4(1.0f), time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+        .view = glm::lookAt(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
         .proj = glm::perspective(glm::radians(45.0f), swapchain_extent.width / static_cast<float>(swapchain_extent.height), 0.1f, 10.0f)
     };
     ubo.proj[1][1] *= -1.0f; // glm's y clip-space axis is opposite to vulkans
@@ -348,26 +521,19 @@ void si::vk::renderer::update_uniform_buffers(unsigned ix) {
     std::copy(&ubo, &ubo + 1, reinterpret_cast<uniform_buffer_object*>(data));
     device.logical->unmapMemory(*uniform_buffer_memories[ix]);
 }
-void si::vk::renderer::buffer_copy(::vk::Buffer src, ::vk::Buffer dst, ::vk::BufferCopy what) {
-    std::vector<::vk::UniqueCommandBuffer> cmds = device.logical->allocateCommandBuffersUnique({
-        *graphics_command_pool,
-        ::vk::CommandBufferLevel::ePrimary,
-        1
-    });
-    ::vk::CommandBuffer& cmd = *cmds.front();
-    cmd.begin(::vk::CommandBufferBeginInfo {});
-    cmd.copyBuffer(src, dst, std::array {what});
-    cmd.end();
-    device.graphics_q.submit (
-        ::vk::SubmitInfo {
-            0, nullptr,
-            nullptr,
-            1, &cmd,
-            0, nullptr
-        },
-        nullptr
+void si::vk::renderer::copy(::vk::Buffer src, ::vk::Buffer dst, ::vk::BufferCopy what) {
+    run_oneshot(
+        [&](::vk::CommandBuffer& cmd) {
+            cmd.copyBuffer(src, dst, std::array{what});
+        }
     );
-    device.graphics_q.waitIdle();
+}
+void si::vk::renderer::copy(::vk::Buffer src, ::vk::Image dst, ::vk::BufferImageCopy what) {
+    run_oneshot(
+        [&](::vk::CommandBuffer& cmd) {
+            cmd.copyBufferToImage(src, dst, ::vk::ImageLayout::eTransferDstOptimal, std::array{what});
+        }
+    );
 }
 si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR old_surface, std::uint32_t width, std::uint32_t height):
     device(device),
@@ -385,6 +551,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
     reset_index_buffer();
     reset_uniform_buffers();
     reset_descriptor_pool();
+    reset_texture_image("wintex.png");
     reset_descriptor_sets();
     reset_command_buffers(width, height);
 }
@@ -530,6 +697,7 @@ std::unique_ptr<si::vk::renderer> si::vk::root::make_renderer(::wl::display& dis
             spdlog::debug("Device max viewports: {} up to {}x{}", props.limits.maxViewports, props.limits.maxViewportDimensions[0], props.limits.maxViewportDimensions[1]);
             std::vector<::vk::ExtensionProperties> exts_avail = physical.enumerateDeviceExtensionProperties();
             //TODO: actually check if the required extensions are available
+            //TODO: check for anisotropy support
             if (true) {
                 std::vector<::vk::QueueFamilyProperties> queue_families = physical.getQueueFamilyProperties();
                 std::vector<::vk::DeviceQueueCreateInfo> queue_infos;

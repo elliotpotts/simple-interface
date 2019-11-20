@@ -7,7 +7,7 @@ wl_scan_cpp = find_program('tools/wayland-scanner-cpp.py')
 add_project_arguments('-Wall', language: 'cpp')
 includes = [include_directories('include'), include_directories('subprojects/wayland')]
 
-deps = [dependency('fmt')]
+deps = [dependency('fmt'), dependency('freeimage')]
 src = ['src/buffer.cpp', 'src/client.cpp', 'src/compositor.cpp', 'src/display.cpp', 'src/egl.cpp', 'src/egl/display.cpp', 'src/egl_window.cpp', 'src/registry.cpp', 'src/seat.cpp', 'src/shm.cpp', 'src/shm_buffer.cpp', 'src/shm_pool.cpp', 'src/si/util.cpp', 'src/surface.cpp', 'src/ui.cpp', 'src/vk_renderer.cpp', 'src/wl.cpp', 'src/wl/keyboard.cpp', 'src/wl/pointer.cpp']
 
 if get_option('support_vk').enabled()
