@@ -158,12 +158,12 @@ void si::vk::renderer::reset_swapchain(std::uint32_t width, std::uint32_t height
         nullptr
     });
 }
-void si::vk::renderer::reset_images() {
-    images = device.logical->getSwapchainImagesKHR(*swapchain);
-    image_views.clear();
-    image_views.reserve(images.size());
-    for (::vk::Image& img : images) {
-        image_views.push_back (
+void si::vk::renderer::reset_swapchain_images() {
+    swapchain_images = device.logical->getSwapchainImagesKHR(*swapchain);
+    swapchain_image_views.clear();
+    swapchain_image_views.reserve(swapchain_images.size());
+    for (::vk::Image& img : swapchain_images) {
+        swapchain_image_views.push_back (
             device.logical->createImageViewUnique({
                 {},
                 img,
@@ -234,10 +234,10 @@ void si::vk::renderer::reset_index_buffer() {
 }
 void si::vk::renderer::reset_uniform_buffers() {
     uniform_buffers.clear();
-    uniform_buffers.resize(images.size());
+    uniform_buffers.resize(swapchain_images.size());
     uniform_buffer_memories.clear();
-    uniform_buffer_memories.resize(images.size());
-    for (unsigned i = 0; i < images.size(); i++) {
+    uniform_buffer_memories.resize(swapchain_images.size());
+    for (unsigned i = 0; i < swapchain_images.size(); i++) {
         std::tie(uniform_buffers[i], uniform_buffer_memories[i]) = device.make_buffer (
             ::vk::DeviceSize { sizeof(uniform_buffer_object) },
             ::vk::BufferUsageFlagBits::eUniformBuffer,
@@ -249,23 +249,23 @@ void si::vk::renderer::reset_uniform_buffers() {
 void si::vk::renderer::reset_descriptor_pool() {
     ::vk::DescriptorPoolSize pool_size {
         ::vk::DescriptorType::eUniformBuffer,
-        static_cast<std::uint32_t>(images.size()),
+        static_cast<std::uint32_t>(swapchain_images.size()),
     };
     descriptor_pool = device.logical->createDescriptorPoolUnique( ::vk::DescriptorPoolCreateInfo {
         {},
-        static_cast<std::uint32_t>(images.size()),
+        static_cast<std::uint32_t>(swapchain_images.size()),
         1,
         &pool_size
     });
 }
 void si::vk::renderer::reset_descriptor_sets() {
-    std::vector<::vk::DescriptorSetLayout> descriptor_set_layouts(images.size(), *descriptor_set_layout);
+    std::vector<::vk::DescriptorSetLayout> descriptor_set_layouts(swapchain_images.size(), *descriptor_set_layout);
     descriptor_sets = device.logical->allocateDescriptorSets(::vk::DescriptorSetAllocateInfo {
         *descriptor_pool,
-        static_cast<std::uint32_t>(images.size()),
+        static_cast<std::uint32_t>(swapchain_images.size()),
         descriptor_set_layouts.data()
     });
-    for (std::size_t i = 0 ; i < images.size(); i++) {
+    for (std::size_t i = 0 ; i < swapchain_images.size(); i++) {
         auto buffer_info = ::vk::DescriptorBufferInfo { *uniform_buffers[i], 0, sizeof(uniform_buffer_object) };
         device.logical->updateDescriptorSets (
             ::vk::WriteDescriptorSet {
@@ -284,8 +284,8 @@ void si::vk::renderer::reset_descriptor_sets() {
 }
 void si::vk::renderer::reset_framebuffers(std::uint32_t width, std::uint32_t height) {
     framebuffers.clear();
-    framebuffers.reserve(image_views.size());
-    for (::vk::UniqueImageView& view_ptr : image_views) {
+    framebuffers.reserve(swapchain_image_views.size());
+    for (::vk::UniqueImageView& view_ptr : swapchain_image_views) {
         framebuffers.push_back (
             device.logical->createFramebufferUnique(::vk::FramebufferCreateInfo {
                 {},
@@ -371,7 +371,7 @@ void si::vk::renderer::buffer_copy(::vk::Buffer src, ::vk::Buffer dst, ::vk::Buf
 }
 si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR old_surface, std::uint32_t width, std::uint32_t height):
     device(device),
-    image_available(device.logical->createSemaphoreUnique({})),
+    swapchain_image_available(device.logical->createSemaphoreUnique({})),
     render_finished(device.logical->createSemaphoreUnique({})),
     in_flight(device.logical->createFenceUnique({::vk::FenceCreateFlagBits::eSignaled})),
     surface(std::move(old_surface)) {
@@ -379,7 +379,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
     reset_pipeline();
     graphics_command_pool = device.logical->createCommandPoolUnique({{}, device.graphics_q_family_ix});
     reset_swapchain(width, height);
-    reset_images();
+    reset_swapchain_images();
     reset_framebuffers(width, height);
     reset_vertex_buffer();
     reset_index_buffer();
@@ -392,7 +392,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
 void si::vk::renderer::resize(std::uint32_t width, std::uint32_t height) {
     device.logical->waitIdle();
     reset_swapchain(width, height);
-    reset_images();
+    reset_swapchain_images();
     reset_framebuffers(width, height);
     reset_uniform_buffers();
     reset_descriptor_pool();
@@ -407,19 +407,19 @@ si::vk::renderer::~renderer() {
 void si::vk::renderer::draw() {
     device.logical->waitForFences(*in_flight, true, std::numeric_limits<std::uint64_t>::max());
     device.logical->resetFences(*in_flight);
-    auto [result, image_ix] = device.logical->acquireNextImageKHR (
+    auto [result, swapchain_image_ix] = device.logical->acquireNextImageKHR (
         *swapchain,
         std::numeric_limits<std::uint64_t>::max(),
-        *image_available,
+        *swapchain_image_available,
         nullptr
     );
-    update_uniform_buffers(image_ix);
+    update_uniform_buffers(swapchain_image_ix);
     ::vk::PipelineStageFlags pipeline_stage = ::vk::PipelineStageFlagBits::eColorAttachmentOutput;
     device.graphics_q.submit (
         ::vk::SubmitInfo {
-            1, &*image_available,
+            1, &*swapchain_image_available,
             &pipeline_stage,
-            1, &*command_buffers[image_ix],
+            1, &*command_buffers[swapchain_image_ix],
             1, &*render_finished
         },
         *in_flight
@@ -428,7 +428,7 @@ void si::vk::renderer::draw() {
         ::vk::PresentInfoKHR {
             1, &*render_finished,
             1, &*swapchain,
-            &image_ix
+            &swapchain_image_ix
         }
     );
 }

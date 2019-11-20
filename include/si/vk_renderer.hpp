@@ -46,7 +46,7 @@ namespace si {
         };
         struct renderer {
             gfx_device& device;
-            ::vk::UniqueSemaphore image_available;
+            ::vk::UniqueSemaphore swapchain_image_available;
             ::vk::UniqueSemaphore render_finished;
             ::vk::UniqueFence in_flight;
             ::vk::UniqueSurfaceKHR surface;
@@ -77,8 +77,8 @@ namespace si {
             std::vector<::vk::DescriptorSet> descriptor_sets; // not unique because they'll be destroyed along with the above pool.
             ::vk::Extent2D swapchain_extent;
             ::vk::UniqueSwapchainKHR swapchain;
-            std::vector<::vk::Image> images;
-            std::vector<::vk::UniqueImageView> image_views;
+            std::vector<::vk::Image> swapchain_images;
+            std::vector<::vk::UniqueImageView> swapchain_image_views;
             std::vector<::vk::UniqueFramebuffer> framebuffers;
             std::vector<::vk::UniqueCommandBuffer> command_buffers;
             const std::vector<vertex> vertices = {
@@ -94,7 +94,7 @@ namespace si {
             void reset_descriptor_set_layout();
             void reset_pipeline();
             void reset_swapchain(std::uint32_t width, std::uint32_t height);
-            void reset_images();
+            void reset_swapchain_images();
             void reset_framebuffers(std::uint32_t width, std::uint32_t height);
             void reset_vertex_buffer();
             void reset_index_buffer();
