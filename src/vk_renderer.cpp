@@ -299,7 +299,6 @@ void si::vk::renderer::reset_descriptor_sets() {
 }
 #include <FreeImage.h>
 //TODO: Make more robust
-// image, start, end
 std::tuple<std::unique_ptr<FIBITMAP, void(*)(FIBITMAP*)>, ::vk::Format, unsigned, unsigned, BYTE*, BYTE*> load_bitmap(std::string filepath) {
     spdlog::debug("Using FreeImage version {}", FreeImage_GetVersion());
     FREE_IMAGE_FORMAT format = FreeImage_GetFileType(filepath.c_str());
@@ -315,7 +314,6 @@ std::tuple<std::unique_ptr<FIBITMAP, void(*)(FIBITMAP*)>, ::vk::Format, unsigned
     unsigned bit_depth = FreeImage_GetBPP(bitmap);
     if (type != FIT_BITMAP || color_type != FIC_RGBALPHA || bit_depth != 32) {
         throw std::runtime_error("Image is either not rgb, not a bitmap or not 32 bits per pixel. Aborting.");
-        //TODO: convert RGB to RGBA
     }
     BYTE* bitmap_begin = FreeImage_GetBits(bitmap);
     if (!bitmap_begin) {
@@ -359,7 +357,7 @@ void si::vk::renderer::image_layout_stage0(::vk::Image& img, ::vk::Format format
 void si::vk::renderer::image_layout_stage1(::vk::Image& img, ::vk::Format format) {
     auto barrier = ::vk::ImageMemoryBarrier {
         ::vk::AccessFlagBits::eTransferWrite, ::vk::AccessFlagBits::eShaderRead,
-        ::vk::ImageLayout::eUndefined, ::vk::ImageLayout::eShaderReadOnlyOptimal,
+        ::vk::ImageLayout::eTransferDstOptimal, ::vk::ImageLayout::eShaderReadOnlyOptimal,
         0, 0,
         img,
         ::vk::ImageSubresourceRange {
@@ -403,7 +401,6 @@ void si::vk::renderer::reset_texture_image(std::string filepath) {
         nullptr
     );
     device.logical->bindImageMemory(*texture_image, *texture_image_memory, {});
-
     image_layout_stage0(*texture_image, bitmap_format);
     copy (
         *staging_buffer,
@@ -524,14 +521,14 @@ void si::vk::renderer::update_uniform_buffers(unsigned ix) {
 void si::vk::renderer::copy(::vk::Buffer src, ::vk::Buffer dst, ::vk::BufferCopy what) {
     run_oneshot(
         [&](::vk::CommandBuffer& cmd) {
-            cmd.copyBuffer(src, dst, std::array{what});
+            cmd.copyBuffer(src, dst, what);
         }
     );
 }
 void si::vk::renderer::copy(::vk::Buffer src, ::vk::Image dst, ::vk::BufferImageCopy what) {
     run_oneshot(
         [&](::vk::CommandBuffer& cmd) {
-            cmd.copyBufferToImage(src, dst, ::vk::ImageLayout::eTransferDstOptimal, std::array{what});
+            cmd.copyBufferToImage(src, dst, ::vk::ImageLayout::eTransferDstOptimal, what);
         }
     );
 }
