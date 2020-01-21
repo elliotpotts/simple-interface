@@ -237,7 +237,7 @@ void si::vk::renderer::reset_swapchain(std::uint32_t width, std::uint32_t height
             .imageFormat = win_image_format,
             .imageColorSpace = win_color_space,
             .imageExtent = swapchain_extent,
-            .imageArrayLayers = 0,
+            .imageArrayLayers = 1,
             .imageUsage = ::vk::ImageUsageFlagBits::eColorAttachment,
             .imageSharingMode = ::vk::SharingMode::eExclusive,
             .queueFamilyIndexCount = 0,
