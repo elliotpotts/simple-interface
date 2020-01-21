@@ -7,6 +7,7 @@
 #include <si/wlp/xdg_shell.hpp>
 #include <si/vk_renderer.hpp>
 #include <si/ui.hpp>
+#include <spdlog/spdlog.h>
 
 void si::wl_run(const ::si::window& win) {
     ::wl::display my_display;
@@ -43,6 +44,7 @@ void si::wl_run(const ::si::window& win) {
     auto r = vk.make_renderer(my_display, my_surface, win.width, win.height);
     my_xdg_surface.on_configure.connect(
         [&](std::uint32_t serial) {
+            spdlog::debug("Configuring...");
             if (new_width != 0 && new_height != 0) {
                 r->resize(new_width, new_height);
                 my_xdg_surface.ack_configure(serial);
@@ -50,7 +52,21 @@ void si::wl_run(const ::si::window& win) {
             }
         }
     );
+    
+    // Draw loop
+    boost::signals2::signal<void(std::chrono::milliseconds)> frame_request;
+    frame_request.connect (
+        [&](std::chrono::milliseconds now) {
+            spdlog::debug("Drawing...");
+            r->draw();
+            my_surface.frame(frame_request);
+            my_surface.commit();
+        }
+    );
+    // Not sure why initial draw is required...
+    r->draw();
+    my_surface.frame(frame_request);
+    my_surface.commit();
     while (my_display.dispatch() != -1) {
-        r->draw();
     }
 }

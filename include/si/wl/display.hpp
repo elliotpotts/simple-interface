@@ -19,6 +19,7 @@ namespace wl {
         explicit operator wl_display*();
         registry make_registry();
         int dispatch();
+        int flush();
         void roundtrip();
         EGLDisplay egl();
     };

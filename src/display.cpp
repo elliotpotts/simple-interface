@@ -1,5 +1,7 @@
 #include <si/wl/display.hpp>
 #include <si/egl.hpp>
+#include <cassert>
+#include <spdlog/spdlog.h>
 
 void wl::display_deleter::operator()(wl_display* dpy) const {
     wl_display_disconnect(dpy);
@@ -22,6 +24,13 @@ int wl::display::dispatch() {
     } else {
         return count;
     }
+}
+int wl::display::flush() {
+    int count = wl_display_flush(hnd.get());
+    if (count == -1) {
+        spdlog::error("No events to flush");
+    }
+    return count;
 }
 void wl::display::roundtrip() {
     wl_display_roundtrip(hnd.get());

@@ -1,4 +1,5 @@
 #include <si/wl/registry.hpp>
+#include <cassert>
 #include <spdlog/spdlog.h>
 
 void wl::registry_deleter::operator()(wl_registry* reg) const {

@@ -299,36 +299,40 @@ void si::vk::renderer::reset_descriptor_sets() {
 }
 #include <FreeImage.h>
 //TODO: Make more robust
-std::tuple<std::unique_ptr<FIBITMAP, void(*)(FIBITMAP*)>, ::vk::Format, unsigned, unsigned, BYTE*, BYTE*> load_bitmap(std::string filepath) {
+struct bitmap {
+    const unsigned width;
+    const unsigned height;
+    const unsigned depth;
+    std::vector<unsigned char> data;
+    const ::vk::Format format = ::vk::Format::eB8G8R8A8Srgb;
+    const unsigned char* begin() const {
+        return std::to_address(data.begin());
+    }
+    const unsigned char* end() const {
+        return std::to_address(data.end());
+    }
+};
+bitmap load_bitmap(std::string filepath) {
     spdlog::debug("Using FreeImage version {}", FreeImage_GetVersion());
     FREE_IMAGE_FORMAT format = FreeImage_GetFileType(filepath.c_str());
     if (!format) {
         throw std::runtime_error("Couldn't determine image format!");
+    } else {
+        const char* format_mime = FreeImage_GetFIFMimeType(format);
+        spdlog::info("Loading {} as {}", filepath, format_mime);
     }
-    FIBITMAP* bitmap = FreeImage_Load(format, filepath.c_str());
+    std::unique_ptr<FIBITMAP, decltype(&FreeImage_Unload)> bitmap{FreeImage_Load(format, filepath.c_str()), FreeImage_Unload};
     if (!bitmap) {
+        bitmap.release();
         throw std::runtime_error("Couldn't load image!");
     }
-    FREE_IMAGE_TYPE type = FreeImage_GetImageType(bitmap);
-    FREE_IMAGE_COLOR_TYPE color_type = FreeImage_GetColorType(bitmap);
-    unsigned bit_depth = FreeImage_GetBPP(bitmap);
-    if (type != FIT_BITMAP || color_type != FIC_RGBALPHA || bit_depth != 32) {
-        throw std::runtime_error("Image is either not rgb, not a bitmap or not 32 bits per pixel. Aborting.");
-    }
-    BYTE* bitmap_begin = FreeImage_GetBits(bitmap);
-    if (!bitmap_begin) {
-        throw std::runtime_error("Image does not contain pixel data. Aborting.");
-    }
-    unsigned width = FreeImage_GetWidth(bitmap);
-    unsigned height = FreeImage_GetHeight(bitmap);
-    unsigned Bpp = bit_depth / ((sizeof(*bitmap_begin) * CHAR_BIT));
-    BYTE* bitmap_end = bitmap_begin + width * height * Bpp;
-    return std::make_tuple (
-        std::unique_ptr<FIBITMAP, void(*)(FIBITMAP*)>{bitmap, &FreeImage_Unload},
-        ::vk::Format::eR8G8B8A8Unorm,
-        width, height,
-        bitmap_begin, bitmap_end
-    );
+    const unsigned width = FreeImage_GetWidth(bitmap.get());
+    const unsigned height = FreeImage_GetHeight(bitmap.get());
+    const unsigned depth = FreeImage_GetBPP(bitmap.get());
+    std::vector<unsigned char> raw(width * height * depth);
+    const unsigned pitch = FreeImage_GetPitch(bitmap.get());
+    FreeImage_ConvertToRawBits(raw.data(), bitmap.get(), pitch, depth, FI_RGBA_BLUE_MASK, FI_RGBA_GREEN_MASK, FI_RGBA_RED_MASK, FALSE);
+    return {width, height, depth, std::move(raw)};
 }
 void si::vk::renderer::image_layout_stage0(::vk::Image& img, ::vk::Format format) {
     auto barrier = ::vk::ImageMemoryBarrier {
@@ -379,13 +383,13 @@ void si::vk::renderer::image_layout_stage1(::vk::Image& img, ::vk::Format format
     );
 }
 void si::vk::renderer::reset_texture_image(std::string filepath) {
-    auto [bitmap, bitmap_format, bitmap_width, bitmap_height, bitmap_begin, bitmap_end] = load_bitmap(filepath);
-    auto [staging_buffer, staging_buffer_memory, size] = stage(bitmap_begin, bitmap_end);
+    auto bmp = load_bitmap(filepath);
+    auto [staging_buffer, staging_buffer_memory, size] = stage(bmp.begin(), bmp.end());
     texture_image = device.logical->createImageUnique (
         ::vk::ImageCreateInfo {}
         .setImageType(::vk::ImageType::e2D)
-        .setFormat(bitmap_format)
-        .setExtent({bitmap_width, bitmap_height, 1})
+        .setFormat(bmp.format)
+        .setExtent({bmp.width, bmp.height, 1})
         .setMipLevels(1)
         .setArrayLayers(1)
         .setSamples(::vk::SampleCountFlagBits::e1)
@@ -401,7 +405,7 @@ void si::vk::renderer::reset_texture_image(std::string filepath) {
         nullptr
     );
     device.logical->bindImageMemory(*texture_image, *texture_image_memory, {});
-    image_layout_stage0(*texture_image, bitmap_format);
+    image_layout_stage0(*texture_image, bmp.format);
     copy (
         *staging_buffer,
         *texture_image,
@@ -416,14 +420,14 @@ void si::vk::renderer::reset_texture_image(std::string filepath) {
                 .setLayerCount(1)
             )
             .setImageOffset({0, 0, 0})
-            .setImageExtent({bitmap_width, bitmap_height, 1})
+            .setImageExtent({bmp.width, bmp.height, 1})
     );
-    image_layout_stage1(*texture_image, bitmap_format);
+    image_layout_stage1(*texture_image, bmp.format);
     texture_image_view = device.logical->createImageViewUnique (
         ::vk::ImageViewCreateInfo()
         .setImage(*texture_image)
         .setViewType(::vk::ImageViewType::e2D)
-        .setFormat(bitmap_format)
+        .setFormat(bmp.format)
         .setSubresourceRange (
             ::vk::ImageSubresourceRange()
             .setAspectMask(::vk::ImageAspectFlagBits::eColor)
@@ -509,9 +513,9 @@ void si::vk::renderer::update_uniform_buffers(unsigned ix) {
     auto now = clock::now();
     float time = std::chrono::duration<float, std::chrono::seconds::period>(now - start).count();
     uniform_buffer_object ubo = {
-        .model = glm::rotate(glm::mat4(1.0f), time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
-        .view = glm::lookAt(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
-        .proj = glm::perspective(glm::radians(45.0f), swapchain_extent.width / static_cast<float>(swapchain_extent.height), 0.1f, 10.0f)
+        .model = glm::mat4{1.0f}, //glm::rotate(glm::mat4(1.0f), time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+        .view = glm::mat4{1.0f}, //glm::lookAt(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+        .proj = glm::mat4{1.0f}, //glm::perspective(glm::radians(45.0f), swapchain_extent.width / static_cast<float>(swapchain_extent.height), 0.1f, 10.0f)
     };
     ubo.proj[1][1] *= -1.0f; // glm's y clip-space axis is opposite to vulkans
     void* data = device.logical->mapMemory(*uniform_buffer_memories[ix], 0, sizeof(ubo));
@@ -548,7 +552,7 @@ si::vk::renderer::renderer(si::vk::gfx_device& device, ::vk::UniqueSurfaceKHR ol
     reset_index_buffer();
     reset_uniform_buffers();
     reset_descriptor_pool();
-    reset_texture_image("wintex.png");
+    reset_texture_image("wintex2.png");
     reset_descriptor_sets();
     reset_command_buffers(width, height);
 }

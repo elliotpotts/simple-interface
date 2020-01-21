@@ -9,8 +9,12 @@ wl::surface::surface(wl_surface* surface) : hnd(surface) {
     }
 }
 void wl::surface::dispatch_frame(void* data, wl_callback* callback, std::uint32_t callback_data) {
-    auto& surface = *reinterpret_cast<wl::surface*>(data);
-    surface.frame_handler(std::chrono::milliseconds{callback_data});
+    auto& signal = *reinterpret_cast<boost::signals2::signal<void(std::chrono::milliseconds)>*>(data);
+    signal(std::chrono::milliseconds{callback_data});
+}
+void wl::surface::frame(boost::signals2::signal<void(std::chrono::milliseconds)>& signal) {
+    auto frame_callback = wl_surface_frame(hnd.get());
+    wl_callback_add_listener(frame_callback, &frame_listener, &signal);
 }
 wl::surface::operator wl_surface*() const {
     return hnd.get();

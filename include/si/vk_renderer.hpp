@@ -97,10 +97,10 @@ namespace si {
             std::vector<::vk::UniqueFramebuffer> framebuffers;
             std::vector<::vk::UniqueCommandBuffer> command_buffers;
             const std::vector<vertex> vertices = {
-                {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-                {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-                {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-                {{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
+                {{-1.0f, -1.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+                {{ 1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+                {{ 1.0f,  1.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+                {{-1.0f,  1.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
             };
             const std::vector<uint16_t> indices = {
                 0, 1, 2, 2, 3, 0
